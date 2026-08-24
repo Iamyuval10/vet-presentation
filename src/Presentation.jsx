@@ -714,8 +714,21 @@ function SlideContent({ slide, quizVotes, onVote }) {
 const CANVAS_WIDTH = 1920;
 const CANVAS_HEIGHT = 1080;
 
+// מפתח ה-sessionStorage ששומר את מספר השקופית הנוכחית. sessionStorage
+// (בניגוד ל-localStorage) משותף רק בתוך אותה לשונית/חלון — רענון עמוד
+// (F5) שומר על אותו session ולכן חוזר לאותה שקופית, בעוד שפתיחת הקישור
+// בלשונית/חלון חדש מקבלת session ריק ומתחילה מהשקופית הראשונה.
+const SLIDE_STORAGE_KEY = "currentSlide";
+
+function getInitialSlide(total) {
+  if (typeof window === "undefined") return 0;
+  const saved = Number(window.sessionStorage.getItem(SLIDE_STORAGE_KEY));
+  if (Number.isInteger(saved) && saved >= 0 && saved < total) return saved;
+  return 0;
+}
+
 export default function Presentation() {
-  const [current, setCurrent] = useState(0);
+  const [current, setCurrent] = useState(() => getInitialSlide(SLIDES.length));
   const total = SLIDES.length;
   const containerRef = useRef(null);
   const viewportRef = useRef(null);
@@ -729,6 +742,24 @@ export default function Presentation() {
   // VoteScreen.jsx), ונשמרים גם בניווט אחורה/קדימה בין מסך ההצבעה
   // למסך התוצאה.
   const [quizVotes, setQuizVotes] = useState({});
+
+  // איפוס אוטומטי בעליית המצגת: בכל פתיחה/רענון של עמוד המצגת (המסך
+  // הראשי בלבד — לא מסך ההצבעה בטלפון), מנקים את כל הקולות שנצברו
+  // ומחזירים את מונה השאלה הפעילה ל-1, כדי שכל הרצאה תתחיל מנתונים נקיים.
+  useEffect(() => {
+    putPath("votes", null).catch((err) =>
+      console.warn("reset votes failed:", err)
+    );
+    putPath("currentQuestion", 1).catch((err) =>
+      console.warn("reset currentQuestion failed:", err)
+    );
+  }, []);
+
+  // שמירת מיקום השקופית הנוכחית ב-sessionStorage בכל שינוי, כדי שרענון
+  // עמוד (F5) יחזיר את המרצה לאותה שקופית במקום להתחיל מחדש מההתחלה.
+  useEffect(() => {
+    window.sessionStorage.setItem(SLIDE_STORAGE_KEY, String(current));
+  }, [current]);
 
   useEffect(() => {
     const unsubscribers = Object.entries(NUMBER_TO_QUIZ_ID).map(([num, quizId]) =>
