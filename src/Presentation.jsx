@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   subscribeToPath,
   putPath,
@@ -363,14 +364,14 @@ function Eyebrow({ children }) {
   );
 }
 
+// כתובת מסך ההצבעה בטלפון — קבועה, מצביעה ישירות לדומיין החי בפרודקשן.
+const VOTE_URL = `https://vet-presentation.vercel.app/vote`;
+
 /**
- * מקום שמור לברקוד (QR). כרגע מציג מסגרת placeholder מעוצבת; ברגע
- * שיהיה URL אמיתי (לדוגמה לינק להצבעה/הרשמה) — פשוט מעבירים אותו
- * ב-prop `url` וזה יציג את קוד ה-QR עצמו במקום המסגרת הריקה.
- * label: הטקסט הנלווה. captionPosition: "inside" (למסגרת גדולה) או
- * "below" (למסגרת קטנה ודיסקרטית).
+ * ברקוד QR חי (qrcode.react) המצביע ל-VOTE_URL. label: הטקסט הנלווה
+ * מתחת לברקוד.
  */
-function QRCodePlaceholder({ size = 80, url, label, captionPosition = "below" }) {
+function QRCodeBox({ size = 80, label }) {
   const isLarge = size >= 200;
   return (
     <div className="gdv-qr-wrap" style={{ width: size }}>
@@ -378,40 +379,18 @@ function QRCodePlaceholder({ size = 80, url, label, captionPosition = "below" })
         className={`gdv-qr-box ${isLarge ? "gdv-qr-box-lg" : ""}`}
         style={{ width: size, height: size }}
       >
-        {url ? (
-          <img src={url} alt="ברקוד לסריקה" className="gdv-qr-image" />
-        ) : captionPosition === "inside" ? (
-          <span className="gdv-qr-caption-inside">{label}</span>
-        ) : (
-          <span className="gdv-qr-icon">QR</span>
-        )}
+        <QRCodeSVG
+          value={VOTE_URL}
+          size={256}
+          bgColor="transparent"
+          fgColor="#fbfaf4"
+          level="M"
+          className="gdv-qr-image"
+        />
       </div>
-      {captionPosition === "below" && label && (
-        <span className="gdv-qr-caption-below">{label}</span>
-      )}
+      {label && <span className="gdv-qr-caption-below">{label}</span>}
     </div>
   );
-}
-
-/**
- * כתובת מסך ההצבעה בטלפון — נגזרת דינמית מהדומיין שבו האתר רץ בפועל
- * (window.location.origin), כך שברגע שהאתר עולה ל-Vercel (או לכל
- * דומיין אחר), הברקוד מצביע אוטומטית לכתובת הנכונה בלי לשנות קוד.
- */
-function getVoteUrl() {
-  if (typeof window === "undefined") return "";
-  return `${window.location.origin}/vote`;
-}
-
-/**
- * הופך URL לתמונת ברקוד סרוקה בפועל, דרך שירות ציבורי חינמי ליצירת
- * QR (ללא צורך בחבילת npm נוספת). אם data ריק (למשל בזמן server-render
- * שבו window עדיין לא קיים) — מחזיר null, וה-QRCodePlaceholder ייפול
- * חזרה למסגרת ה-placeholder הרגילה עד שהעמוד ייטען בדפדפן.
- */
-function getQrImageSrc(data, size) {
-  if (!data) return null;
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}`;
 }
 
 const OPTION_LETTERS = { a: `א'`, b: `ב'`, c: `ג'`, d: `ד'` };
@@ -542,12 +521,7 @@ function SlideContent({ slide, quizVotes, onVote }) {
           <Eyebrow>{slide.eyebrow}</Eyebrow>
           <h1 className="gdv-title-mega">{slide.megaTitle}</h1>
           {slide.subtitle && <p className="gdv-cover-subtitle">{slide.subtitle}</p>}
-          <QRCodePlaceholder
-            size={250}
-            url={getQrImageSrc(getVoteUrl(), 250)}
-            label={`סרקו כדי להצטרף להצבעה`}
-            captionPosition="below"
-          />
+          <QRCodeBox size={250} label={`סרקו כדי להצטרף להצבעה`} />
         </div>
       );
 
@@ -1562,33 +1536,18 @@ export default function Presentation() {
           display: flex;
           align-items: center;
           justify-content: center;
-          border: 2px dashed var(--gold-soft);
+          border: 2px solid var(--gold-soft);
           border-radius: 8px;
-          background: rgba(255,255,255,0.03);
+          background: rgba(255,255,255,0.04);
           padding: 10px;
           overflow: hidden;
         }
         .gdv-qr-box-lg {
           border-width: 3px;
           border-radius: 14px;
-          background: rgba(255,255,255,0.04);
+          background: rgba(255,255,255,0.05);
         }
         .gdv-qr-image { width: 100%; height: 100%; object-fit: contain; }
-        .gdv-qr-icon {
-          font-family: 'Rubik', sans-serif;
-          font-weight: 800;
-          font-size: 22px;
-          letter-spacing: 0.1em;
-          color: var(--gold-soft);
-        }
-        .gdv-qr-caption-inside {
-          font-size: 17px;
-          font-weight: 500;
-          line-height: 1.5;
-          color: var(--text-muted);
-          text-align: center;
-          padding: 0 14px;
-        }
         .gdv-qr-caption-below {
           font-size: 12px;
           color: var(--text-muted);
@@ -1726,12 +1685,7 @@ export default function Presentation() {
       {/* ברקוד משני — דיסקרטי, בכל השקפים חוץ מהפתיחה (שם יש ברקוד ראשי גדול) */}
       {current !== 0 && (
         <div className="gdv-qr-corner">
-          <QRCodePlaceholder
-            size={110}
-            url={getQrImageSrc(getVoteUrl(), 110)}
-            label={`סרוק להצטרפות`}
-            captionPosition="below"
-          />
+          <QRCodeBox size={110} label={`סרוק להצטרפות`} />
         </div>
       )}
 
