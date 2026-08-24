@@ -93,22 +93,24 @@ export async function incrementVote(questionNumber, optionId) {
 }
 
 /**
- * מיפוי quizId (במצגת) <-> מזהה מספרי (בטלפון), לפי תוכן השאלות:
- *   1 = dilemma       (דילמה קלינית — שקילת הרדמת הכלב ושחרורו)
+ * מיפוי quizId (במצגת) <-> מזהה מספרי (בטלפון), לפי סדר הופעתן בפועל
+ * במצגת (SLIDES ב-Presentation.jsx) — כך שמספר השאלה המוצג בטלפון
+ * ("שאלה 1", "שאלה 2"...) תמיד תואם למספר המוצג במצגת עצמה:
+ *   1 = riskFactors    (גורמי סיכון — אנטומיה/תזונה/סטרס)
  *   2 = diagnosis      (אבחון קליני — ריריות/דופק)
  *   3 = treatment      (פרוטוקול טיפול — עירוי/דקומפרסיה)
- *   4 = riskFactors    (גורמי סיכון — אנטומיה/תזונה/סטרס)
+ *   4 = dilemma        (דילמה קלינית — שקילת הרדמת הכלב ושחרורו)
  */
 export const QUIZ_ID_TO_NUMBER = {
-  dilemma: 1,
+  riskFactors: 1,
   diagnosis: 2,
   treatment: 3,
-  riskFactors: 4,
+  dilemma: 4,
 };
 
 export const NUMBER_TO_QUIZ_ID = {
-  1: "dilemma",
+  1: "riskFactors",
   2: "diagnosis",
   3: "treatment",
-  4: "riskFactors",
+  4: "dilemma",
 };

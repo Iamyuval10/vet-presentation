@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { subscribeToPath, incrementVote } from "./firebaseRest";
 
 /**
  * Vote.jsx
  * רכיב מובייל לשימוש הקהל בזמן מצגת בלייב.
- * מנהל 3 מצבים: waiting / active / voted
+ * מנהל מסכי-מצב: waiting / active / locked-waiting / revealed
  * קובץ יחיד — כולל בתוכו גם את סרגל הבדיקה (DevControls) כקומפוננטה
  * פנימית. החיבור ל-Firebase נעשה דרך REST API בלבד (fetch) — בלי שום
  * import של חבילת firebase (npm), כדי שהקוד ירוץ בכל סביבה בלי תלויות
@@ -13,42 +13,44 @@ import { subscribeToPath, incrementVote } from "./firebaseRest";
  *
  * חיבור ל-Firebase (devMode=false):
  *  - עושה polling (fetch כל 1.5 שניות) על נתיב currentSession כדי לדעת
- *    איזו שאלה פעילה עכשיו, ועובר אליה אוטומטית ברגע שהמרצה מעביר
- *    שקופית במצגת הראשית.
+ *    איזו שאלה פעילה עכשיו ומה מצבה ("active" = שאלה פתוחה להצבעה,
+ *    "revealed" = המרצה עבר למסך התוצאה/הסבר), ועובר אליה אוטומטית
+ *    ברגע שהמרצה מעביר שקופית במצגת הראשית.
  *  - בלחיצה על תשובה, כותב הצבעה לנתיב votes/{questionId}/{option}
  *    (GET ואז PATCH דרך fetch רגיל — ראו incrementVote בקובץ
- *    firebaseRest.js), ושומר flag מקומי (votedQuestionId) כדי שהמכשיר
- *    הזה לא יוכל להצביע פעמיים לאותה שאלה, ויעבור מיד למסך "הצבעתך
- *    נקלטה" — גם אם המרצה עדיין לא עבר למסך התוצאה.
+ *    firebaseRest.js), ושומר את הבחירה מקומית (localStorage, לפי מספר
+ *    שאלה) כדי שהמכשיר הזה לא יוכל להצביע פעמיים לאותה שאלה, גם אחרי
+ *    רענון עמוד — ויעבור מיד למסך "ממתין לשאלה הבאה" עם הבחירה נעולה,
+ *    בלי לחשוף אם היא נכונה או לא.
+ *  - התשובה הנכונה/הסבר נחשפים אך ורק כשה-status הופך ל-"revealed"
+ *    (כלומר כשהמרצה מעביר בפועל את המצגת לשקופית התוצאה).
  *  - דורש קובץ firebaseRest.js (ראו ./firebaseRest) עם אותה כתובת
  *    Database URL כמו שמוגדרת ברכיב המצגת הראשית, כדי ששני הצדדים
  *    יתחברו לאותו מסד נתונים.
  *
  * Props:
- *  - status: 'waiting' | 'active' | 'voted' — משמש רק אם devMode=true
- *    (בפרודקשן הסטטוס מגיע מ-Firebase דרך currentSession)
- *  - activeQuestionId: number (1-4) — משמש רק אם devMode=true
- *  - onVote: (optionKey: 'a'|'b'|'c'|'d') => void — נקרא בנוסף לכתיבה
- *    ל-Firebase, כ-hook אופציונלי לצרכי בדיקה/אנליטיקס בצד הקורא
- *  - selectedAnswer: 'a'|'b'|'c'|'d' | null — התשובה שנבחרה (לשימוש במצב 'voted')
  *  - devMode: boolean — מציג סרגל בדיקה בתחתית המסך שמאפשר מעבר ידני בין
  *    מצבים ושאלות, בלי תלות ב-Firebase. ברירת מחדל: true. הפוך ל-false
  *    כדי להתחבר בפועל ל-Firebase (או מחק את בלוק ה-DevControls בתחתית הקובץ).
  */
 
-// מאגר אפשרויות התשובה לכל שאלה (רק המלל שמוצג בטלפון)
+// מאגר אפשרויות התשובה לכל שאלה (המלל שמוצג בטלפון + התשובה הנכונה),
+// לפי מספר השאלה התואם בדיוק לסדר הופעתה במצגת הראשית (ראו
+// QUIZ_ID_TO_NUMBER ב-firebaseRest.js).
 const QUESTION_OPTIONS = {
   1: {
     number: 1,
+    correct: "b",
     options: {
-      a: "המשך ניטור אינטנסיבי מחשש להופעת סיבוכים מאוחרים (כגון הפרעות קצב).",
-      b: "שקילת הערת הכלב ושחרורו למעקב בלבד מאחר והצינור עבר והוא התייצב.",
-      c: "התייחסות למקרה כמצב חירום קליני הדורש המשך טיפול אינטנסיבי.",
-      d: "התחשבות ברמת הסטרס והלחץ של הכלב כחלק מניהול הטיפול.",
+      a: "הסיכון מושפע אך ורק ממבנה גוף אנטומי בעל חזה עמוק.",
+      b: "הסיכון מושפע משילוב של אנטומיה (חזה עמוק), תזונה (ארוחות גדולות) וגורמים התנהגותיים/סטרס.",
+      c: "הסיכון מוגבר אך ורק בשל גורמים תזונתיים של האכלה בארוחה אחת גדולה ביום.",
+      d: "הסיכון תלוי אך ורק במצבו הנפשי של הכלב ובפרופיל החרדתי שלו.",
     },
   },
   2: {
     number: 2,
+    correct: "c",
     options: {
       a: 'נסיונות הקאה לא אפקטיביים ("על ריק").',
       b: "ריור מוגבר וקושי בבליעה.",
@@ -58,6 +60,7 @@ const QUESTION_OPTIONS = {
   },
   3: {
     number: 3,
+    correct: "c",
     options: {
       a: "דיקור קיר הגוף להוצאת אוויר (דקומפרסיה).",
       b: "הכנסת צינור קיבה ושטיפתה.",
@@ -67,11 +70,12 @@ const QUESTION_OPTIONS = {
   },
   4: {
     number: 4,
+    correct: "b",
     options: {
-      a: "הסיכון מושפע אך ורק ממבנה גוף אנטומי בעל חזה עמוק.",
-      b: "הסיכון מושפע משילוב של אנטומיה (חזה עמוק), תזונה (ארוחות גדולות) וגורמים התנהגותיים/סטרס.",
-      c: "הסיכון מוגבר אך ורק בשל גורמים תזונתיים של האכלה בארוחה אחת גדולה ביום.",
-      d: "הסיכון תלוי אך ורק במצבו הנפשי של הכלב ובפרופיל החרדתי שלו.",
+      a: "המשך ניטור אינטנסיבי מחשש להופעת סיבוכים מאוחרים (כגון הפרעות קצב).",
+      b: "שקילת הערת הכלב ושחרורו למעקב בלבד מאחר והצינור עבר והוא התייצב.",
+      c: "התייחסות למקרה כמצב חירום קליני הדורש המשך טיפול אינטנסיבי.",
+      d: "התחשבות ברמת הסטרס והלחץ של הכלב כחלק מניהול הטיפול.",
     },
   },
 };
@@ -81,30 +85,46 @@ const COLORS = {
   textPrimary: "#fbfaf4",
   textSecondary: "#c3c6b4",
   accent: "#d4b055",
+  success: "#3fae6f",
+  wrong: "#d93744",
 };
 
 const PHONE_OPTION_KEYS = ["a", "b", "c", "d"];
 const OPTION_LABELS = { a: "א", b: "ב", c: "ג", d: "ד" };
 
-export default function Vote({
-  status = "waiting",
-  activeQuestionId = null,
-  onVote = () => {},
-  selectedAnswer = null,
-  devMode = true,
-}) {
-  const [localSelected, setLocalSelected] = useState(selectedAnswer);
+// מפתח האחסון המקומי (localStorage) שבו נשמרות תשובות המשתמש לפי מספר
+// שאלה — כך שאם המרצה חוזר לשאלה שכבר נענתה (או שהמכשיר רענן את העמוד),
+// הבחירה הקודמת נזכרת ומוצגת נעולה, בלי לאפשר הצבעה כפולה.
+const ANSWERS_STORAGE_KEY = "gdv-vote-answers";
 
-  // מצב פנימי לשימוש סרגל הבדיקה בלבד: כשה-devMode פעיל, הסרגל
-  // "עוקף" את הפרופים שמגיעים מבחוץ כדי לאפשר מעבר ידני חופשי בין
-  // מצבים ושאלות, בלי תלות בשרת. במצב ייצור (devMode=false) הרכיב
-  // מתחבר ישירות ל-Firebase ומאזין לנתיב currentSession בזמן אמת.
-  const [devStatus, setDevStatus] = useState(status);
-  const [devQuestionId, setDevQuestionId] = useState(activeQuestionId || 1);
+function loadStoredAnswers() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(ANSWERS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredAnswers(answers) {
+  try {
+    window.localStorage.setItem(ANSWERS_STORAGE_KEY, JSON.stringify(answers));
+  } catch {
+    // localStorage לא זמין (מצב פרטי/חסום) — לא קריטי, פשוט לא נשמר בין רענונים
+  }
+}
+
+export default function Vote({ devMode = true }) {
+  // תשובות שכבר נשלחו ע"י המכשיר הזה, לפי מספר שאלה: { [questionNumber]: optionKey }
+  const [answeredMap, setAnsweredMap] = useState(loadStoredAnswers);
+
+  // --- מצב פנימי לשימוש סרגל הבדיקה בלבד ---
+  const [devStatus, setDevStatus] = useState("waiting"); // waiting | active | revealed
+  const [devQuestionId, setDevQuestionId] = useState(1);
 
   // --- מצב ייצור: פולינג על currentSession ב-Firebase (REST, fetch כל 1.5 שנ') ---
-  // כשהמרצה מעביר שקופית לשאלה חדשה במצגת הראשית, הערך הזה מתעדכן
-  // אוטומטית וכל הטלפונים המחוברים "קופצים" לשאלה החדשה בעצמם.
+  // status: "waiting" | "active" | "revealed"
   const [liveSession, setLiveSession] = useState({ status: "waiting", activeQuestionId: null });
 
   useEffect(() => {
@@ -119,71 +139,53 @@ export default function Vote({
     return () => unsubscribe();
   }, [devMode]);
 
-  // --- מניעת הצבעה כפולה ---
-  // flag מקומי (למכשיר הזה בלבד): לאיזו שאלה כבר הצבענו. ברגע שהצבעתי
-  // לשאלה X, המסך שלי עובר ל"הצבעתך נקלטה" מיד — גם אם שאר הקהל עדיין
-  // מצביע ומסך המצגת הראשית עדיין לא עבר למסך התוצאה. כשמתחילה שאלה
-  // חדשה (activeQuestionId משתנה), הפלג הזה כבר לא תואם ואפשר להצביע שוב.
-  const [votedQuestionId, setVotedQuestionId] = useState(null);
-
-  const liveHasVotedCurrent =
-    liveSession.activeQuestionId != null && votedQuestionId === liveSession.activeQuestionId;
-  const effectiveStatus = devMode
-    ? devStatus
-    : liveHasVotedCurrent
-    ? "voted"
-    : liveSession.status;
-  const effectiveQuestionId = devMode ? devQuestionId : liveSession.activeQuestionId;
-
-  useEffect(() => {
-    setLocalSelected(selectedAnswer);
-  }, [selectedAnswer]);
-
-  // באיפוס שאלה/מצב מהסרגל, ננקה בחירה קודמת כדי שלא "תידלף" בין שאלות
-  useEffect(() => {
-    if (devMode) setLocalSelected(null);
-  }, [devStatus, devQuestionId, devMode]);
-
-  // כשמתחילה שאלה חדשה בזמן אמת (activeQuestionId משתנה), מנקים את
-  // הבחירה המקומית שהוצגה כמסומנת, כדי שהמסך יתחיל נקי עבור השאלה הבאה
-  useEffect(() => {
-    if (!devMode) setLocalSelected(null);
-  }, [liveSession.activeQuestionId, devMode]);
-
-  const question = effectiveQuestionId
-    ? QUESTION_OPTIONS[effectiveQuestionId]
-    : null;
+  const status = devMode ? devStatus : liveSession.status;
+  const questionId = devMode ? devQuestionId : liveSession.activeQuestionId;
+  const question = questionId ? QUESTION_OPTIONS[questionId] : null;
+  const answeredKey = questionId != null ? answeredMap[questionId] : undefined;
+  const hasAnswered = answeredKey != null;
 
   const handleSelect = (key) => {
-    if (effectiveStatus !== "active") return;
-    setLocalSelected(key);
-    onVote(key);
+    if (status !== "active" || hasAnswered || !questionId) return;
 
-    if (devMode) {
-      setDevStatus("voted");
-      return;
-    }
+    setAnsweredMap((prev) => {
+      const next = { ...prev, [questionId]: key };
+      saveStoredAnswers(next);
+      return next;
+    });
+
+    if (devMode) return;
 
     // שליחת הצבעה: incrementVote עושה GET ואז PATCH דרך fetch רגיל
     // (ראו הערה על מגבלות ה-REST API הפשוט בקובץ firebaseRest.js).
-    incrementVote(effectiveQuestionId, key).catch((err) =>
+    incrementVote(questionId, key).catch((err) =>
       console.warn("vote failed:", err)
     );
-    setVotedQuestionId(effectiveQuestionId);
   };
+
+  // מסך שיוצג בפועל, לפי status + האם המכשיר כבר ענה על השאלה הנוכחית:
+  //  - waiting: אין שאלה פעילה כרגע
+  //  - active + לא ענה: מסך הצבעה
+  //  - active + ענה: "ממתין לשאלה הבאה", עם הבחירה נעולה, בלי לחשוף נכון/לא נכון
+  //  - revealed: המרצה עבר למסך התוצאה — חושפים אם התשובה שנבחרה הייתה נכונה
+  let screen = "waiting";
+  if (status === "active" && question) {
+    screen = hasAnswered ? "locked-waiting" : "active";
+  } else if (status === "revealed" && question) {
+    screen = "revealed";
+  }
 
   return (
     <div style={styles.screen} dir="rtl">
-      {effectiveStatus === "waiting" && <WaitingState />}
-      {effectiveStatus === "active" && question && (
-        <ActiveState
-          question={question}
-          selected={localSelected}
-          onSelect={handleSelect}
-        />
+      {screen === "waiting" && <WaitingState />}
+      {screen === "active" && (
+        <ActiveState question={question} onSelect={handleSelect} />
       )}
-      {effectiveStatus === "voted" && question && (
-        <VotedState question={question} selected={localSelected} />
+      {screen === "locked-waiting" && (
+        <LockedWaitingState question={question} selected={answeredKey} />
+      )}
+      {screen === "revealed" && (
+        <RevealedState question={question} selected={answeredKey} />
       )}
 
       {devMode && (
@@ -208,7 +210,7 @@ function WaitingState() {
   );
 }
 
-function ActiveState({ question, selected, onSelect }) {
+function ActiveState({ question, onSelect }) {
   return (
     <div style={styles.activeWrap}>
       <div style={styles.header}>
@@ -220,19 +222,9 @@ function ActiveState({ question, selected, onSelect }) {
           <button
             key={key}
             onClick={() => onSelect(key)}
-            style={{
-              ...styles.optionButton,
-              ...(selected === key ? styles.optionButtonSelected : {}),
-            }}
+            style={styles.optionButton}
           >
-            <span
-              style={{
-                ...styles.optionBadge,
-                ...(selected === key ? styles.optionBadgeSelected : {}),
-              }}
-            >
-              {OPTION_LABELS[key]}
-            </span>
+            <span style={styles.optionBadge}>{OPTION_LABELS[key]}</span>
             <span style={styles.optionText}>{question.options[key]}</span>
           </button>
         ))}
@@ -241,7 +233,12 @@ function ActiveState({ question, selected, onSelect }) {
   );
 }
 
-function VotedState({ question, selected }) {
+/**
+ * מוצג כאשר המכשיר כבר הצביע על השאלה הנוכחית, אך המרצה עדיין לא עבר
+ * למסך התוצאה. הבחירה הקודמת נשארת מסומנת ונעולה, ואין שום רמז אם היא
+ * נכונה — הפידבק מתעכב עד שהמרצה עצמו חושף את התשובה במצגת.
+ */
+function LockedWaitingState({ question, selected }) {
   return (
     <div style={styles.votedWrap}>
       <div style={styles.votedHeader}>
@@ -290,21 +287,106 @@ function VotedState({ question, selected }) {
         })}
       </div>
 
-      <p style={styles.votedSubtitle}>הסתכל על הלוח לתוצאות</p>
+      <p style={styles.votedSubtitle}>ממתין לשאלה הבאה...</p>
+    </div>
+  );
+}
+
+/**
+ * מוצג רק לאחר שהמרצה עצמו עבר במצגת לשקופית התוצאה/הסבר של השאלה
+ * הזו (status === "revealed"). כאן — ורק כאן — נחשף אם הבחירה של
+ * המשתמש הייתה נכונה או שגויה, יחד עם סימון האפשרות הנכונה.
+ */
+function RevealedState({ question, selected }) {
+  const answered = selected != null;
+  const isCorrect = answered && selected === question.correct;
+
+  return (
+    <div style={styles.votedWrap}>
+      <div style={styles.votedHeader}>
+        {answered ? (
+          isCorrect ? (
+            <Check size={20} strokeWidth={3} color={COLORS.success} />
+          ) : (
+            <X size={20} strokeWidth={3} color={COLORS.wrong} />
+          )
+        ) : null}
+        <p
+          style={{
+            ...styles.votedTitle,
+            color: !answered
+              ? COLORS.textPrimary
+              : isCorrect
+              ? COLORS.success
+              : COLORS.wrong,
+          }}
+        >
+          {answered ? (isCorrect ? "כל הכבוד, ענית נכון!" : "התשובה שבחרת שגויה") : "לא הספקת להצביע"}
+        </p>
+      </div>
+
+      <div style={styles.optionsWrap}>
+        {PHONE_OPTION_KEYS.map((key) => {
+          const isSelected = selected === key;
+          const isRight = key === question.correct;
+          const rowStyle = isRight
+            ? styles.revealCorrectRow
+            : isSelected
+            ? styles.revealWrongRow
+            : styles.lockedOptionRow;
+          return (
+            <div
+              key={key}
+              style={{
+                ...styles.optionButton,
+                ...rowStyle,
+              }}
+            >
+              <span
+                style={{
+                  ...styles.optionBadge,
+                  ...(isRight
+                    ? styles.optionBadgeCorrect
+                    : isSelected
+                    ? styles.optionBadgeWrong
+                    : {}),
+                }}
+              >
+                {OPTION_LABELS[key]}
+              </span>
+              <span
+                style={{
+                  ...styles.optionText,
+                  ...(isRight || isSelected ? styles.lockedOptionTextSelected : {}),
+                }}
+              >
+                {question.options[key]}
+              </span>
+              {isRight && (
+                <Check size={20} strokeWidth={3} color={COLORS.success} style={styles.lockedCheckIcon} />
+              )}
+              {!isRight && isSelected && (
+                <X size={20} strokeWidth={3} color={COLORS.wrong} style={styles.lockedCheckIcon} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <p style={styles.votedSubtitle}>הסתכל על הלוח להסבר המלא</p>
     </div>
   );
 }
 
 /**
  * DevControls
- * סרגל בדיקה דיסקרטי לתחתית המסך — מאפשר מעבר ידני בין מצבי ה-UI
- * (waiting / active / voted) ובין שאלות 1-4, לפני חיבור לשרת.
- * ממוזג לתוך אותו קובץ לפי בקשה, אך נשאר קומפוננטה עצמאית ומבודדת —
- * כדי להסיר אותה בהמשך מספיק למחוק את הפונקציה הזו ואת התג
- * <DevControls /> בתוך VoteScreen, בלי לגעת בשאר הלוגיקה.
+ * סרגל בדיקה דיסקרטי לתחתית המסך — מאפשר מעבר ידני בין מצבי ה-session
+ * (waiting / active / revealed) ובין שאלות 1-4, בלי תלות בשרת. ההצבעה
+ * עצמה (ולכן מעבר למסך "ממתין לשאלה הבאה") מתבצעת ע"י לחיצה בפועל על
+ * אחת האפשרויות במסך active, בדיוק כמו בייצור.
  */
 function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
-  const STATUSES = ["waiting", "active", "voted"];
+  const STATUSES = ["waiting", "active", "revealed"];
   const QUESTION_IDS = [1, 2, 3, 4];
 
   return (
@@ -436,11 +518,6 @@ const styles = {
     transition:
       "background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease",
   },
-  optionButtonSelected: {
-    backgroundColor: "rgba(212, 176, 85, 0.12)",
-    borderColor: COLORS.accent,
-    transform: "scale(0.99)",
-  },
   optionBadge: {
     flexShrink: 0,
     width: 32,
@@ -457,6 +534,14 @@ const styles = {
   optionBadgeSelected: {
     backgroundColor: COLORS.accent,
     color: COLORS.bg,
+  },
+  optionBadgeCorrect: {
+    backgroundColor: COLORS.success,
+    color: COLORS.bg,
+  },
+  optionBadgeWrong: {
+    backgroundColor: COLORS.wrong,
+    color: COLORS.textPrimary,
   },
   optionText: {
     flex: 1,
@@ -514,6 +599,24 @@ const styles = {
     top: "50%",
     transform: "translateY(-50%)",
     flexShrink: 0,
+  },
+  revealCorrectRow: {
+    cursor: "default",
+    opacity: 1,
+    position: "relative",
+    backgroundColor: "rgba(63, 174, 111, 0.14)",
+    borderColor: COLORS.success,
+    boxShadow: "0 0 20px rgba(63, 174, 111, 0.22)",
+    paddingLeft: 44,
+  },
+  revealWrongRow: {
+    cursor: "default",
+    opacity: 1,
+    position: "relative",
+    backgroundColor: "rgba(217, 55, 68, 0.14)",
+    borderColor: COLORS.wrong,
+    boxShadow: "0 0 20px rgba(217, 55, 68, 0.22)",
+    paddingLeft: 44,
   },
   devBar: {
     position: "fixed",

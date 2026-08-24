@@ -3,7 +3,6 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   subscribeToPath,
   putPath,
-  incrementVote,
   QUIZ_ID_TO_NUMBER,
   NUMBER_TO_QUIZ_ID,
 } from "./firebaseRest";
@@ -405,15 +404,19 @@ const OPTION_ORDER = ["a", "b", "c", "d"];
 const ZERO_VOTES = { a: 0, b: 0, c: 0, d: 0 };
 
 /**
- * מסך 1 — הצבעה בלבד. לעולם לא מציג איזו תשובה נכונה, גם לא בלחיצה —
- * רק אוסף קולות (כל לחיצה על אפשרות = קול נוסף) ומציג התפלגות חיה.
+ * מסך 1 — תצוגת הצבעה בלבד (read-only). המצגת הראשית אינה נקודת הצבעה —
+ * הקולות מגיעים אך ורק מהטלפונים (Vote.jsx). כאן רק מוצגת התפלגות חיה
+ * של הקולות שכבר נקלטו ב-Firebase, ללא כל אפשרות אינטראקציה/לחיצה.
  * ה-state של הקולות מוחזק בהורה (לפי quizId) כדי שיישמר גם בניווט אחורה/קדימה.
  */
-function QuizVoteSlide({ slide, votes, onVote }) {
+function QuizVoteSlide({ slide, votes, questionNumber }) {
   const total = votes.a + votes.b + votes.c + votes.d;
 
   return (
     <div className="gdv-quiz">
+      <div className="gdv-quiz-header">
+        <span className="gdv-quiz-qnum">שאלה {questionNumber}</span>
+      </div>
       <p className="gdv-quiz-scenario">{slide.scenario}</p>
 
       <div className="gdv-quiz-options">
@@ -421,13 +424,7 @@ function QuizVoteSlide({ slide, votes, onVote }) {
           const count = votes[opt.id];
           const pct = total > 0 ? Math.round((count / total) * 100) : 0;
           return (
-            <button
-              key={opt.id}
-              type="button"
-              className="gdv-quiz-option"
-              onClick={() => onVote(opt.id)}
-              aria-pressed={count > 0}
-            >
+            <div key={opt.id} className="gdv-quiz-option" aria-readonly="true">
               <span className="gdv-quiz-option-top">
                 <span className="gdv-quiz-option-letter">{OPTION_LETTERS[opt.id]}</span>
                 <span className="gdv-quiz-option-text">{opt.text}</span>
@@ -436,7 +433,7 @@ function QuizVoteSlide({ slide, votes, onVote }) {
               <span className="gdv-quiz-bar-track">
                 <span className="gdv-quiz-bar-fill" style={{ width: `${pct}%` }} />
               </span>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -451,7 +448,7 @@ function QuizVoteSlide({ slide, votes, onVote }) {
  * או "אזהרה" (אדום) אם הרוב טעה — עם הסבר גדול במרכז, ותקציר קטן
  * של השאלה והאפשרויות בתחתית.
  */
-function QuizResultSlide({ slide, votes }) {
+function QuizResultSlide({ slide, votes, questionNumber }) {
   const total = votes.a + votes.b + votes.c + votes.d;
   const majorityId =
     total > 0 ? OPTION_ORDER.reduce((best, id) => (votes[id] > votes[best] ? id : best), "a") : null;
@@ -464,6 +461,9 @@ function QuizResultSlide({ slide, votes }) {
 
   return (
     <div className={`gdv-quiz-result gdv-quiz-result-${themeKey}`}>
+      <div className="gdv-quiz-result-header">
+        <span className="gdv-quiz-qnum gdv-quiz-qnum-result">שאלה {questionNumber} — תשובה</span>
+      </div>
       <div className="gdv-quiz-result-main">
         {showDualExplanation ? (
           <div className="gdv-quiz-result-dual">
@@ -513,7 +513,7 @@ function QuizResultSlide({ slide, votes }) {
 // רינדור תוכן לפי סוג שקף
 // ---------------------------------------------------------------------------
 
-function SlideContent({ slide, quizVotes, onVote }) {
+function SlideContent({ slide, quizVotes }) {
   switch (slide.type) {
     case "cover":
       return (
@@ -665,12 +665,18 @@ function SlideContent({ slide, quizVotes, onVote }) {
         <QuizVoteSlide
           slide={slide}
           votes={quizVotes[slide.quizId] || ZERO_VOTES}
-          onVote={(optionId) => onVote(slide.quizId, optionId)}
+          questionNumber={QUIZ_ID_TO_NUMBER[slide.quizId]}
         />
       );
 
     case "quiz-result":
-      return <QuizResultSlide slide={slide} votes={quizVotes[slide.quizId] || ZERO_VOTES} />;
+      return (
+        <QuizResultSlide
+          slide={slide}
+          votes={quizVotes[slide.quizId] || ZERO_VOTES}
+          questionNumber={QUIZ_ID_TO_NUMBER[slide.quizId]}
+        />
+      );
 
     default:
       return null;
@@ -753,17 +759,6 @@ export default function Presentation() {
     return () => unsubscribers.forEach((unsub) => unsub());
   }, []);
 
-  // לחיצה על אפשרות (למשל הדגמה מהמסך הראשי עצמו) כותבת ישירות ל-Firebase
-  // דרך REST (incrementVote: GET ואז PATCH), בדיוק כמו הצבעה מטלפון —
-  // כך שכל הקולות (מהמסך ומהקהל כאחד) מצטברים לאותו מונה.
-  const castVote = useCallback((quizId, optionId) => {
-    const questionNumber = QUIZ_ID_TO_NUMBER[quizId];
-    if (!questionNumber) return;
-    incrementVote(questionNumber, optionId).catch((err) =>
-      console.warn("castVote failed:", err)
-    );
-  }, []);
-
   // --- סנכרון Firebase (REST): שידור השאלה הפעילה ---
   // בכל מעבר לשקופית שאלה (הצבעה או תוצאה), משדרים ל-currentSession
   // (PUT דרך fetch) את מזהה השאלה הפעילה ואת הסטטוס — כך שכל הטלפונים
@@ -776,7 +771,7 @@ export default function Presentation() {
     if (!questionNumber) return;
     putPath("currentSession", {
       activeQuestionId: questionNumber,
-      status: slide.type === "quiz-vote" ? "active" : "voted",
+      status: slide.type === "quiz-vote" ? "active" : "revealed",
     }).catch((err) => console.warn("currentSession update failed:", err));
   }, [current]);
 
@@ -1177,6 +1172,21 @@ export default function Presentation() {
           flex-direction: column;
           gap: 26px;
         }
+        .gdv-quiz-header {
+          display: flex;
+          justify-content: flex-start;
+        }
+        .gdv-quiz-qnum {
+          display: inline-block;
+          font-family: 'Rubik', sans-serif;
+          font-weight: 800;
+          font-size: 16px;
+          letter-spacing: 0.06em;
+          color: var(--bg-void);
+          background: linear-gradient(135deg, var(--gold) 0%, var(--gold-soft) 100%);
+          border-radius: 4px;
+          padding: 6px 16px;
+        }
         .gdv-quiz-scenario {
           margin: 0;
           padding-bottom: 22px;
@@ -1201,15 +1211,10 @@ export default function Presentation() {
           border: 1.5px solid var(--olive-deep);
           border-radius: 7px;
           padding: 16px 22px;
-          cursor: pointer;
+          cursor: default;
           font-family: 'Heebo', sans-serif;
           transition: border-color 0.2s, background 0.2s, opacity 0.2s;
         }
-        .gdv-quiz-option:hover:not(:disabled) {
-          border-color: var(--gold-soft);
-          background: var(--olive-deep);
-        }
-        .gdv-quiz-option:disabled { cursor: default; }
         .gdv-quiz-option-top {
           display: flex;
           align-items: center;
@@ -1271,19 +1276,35 @@ export default function Presentation() {
           height: 100%;
           display: flex;
           flex-direction: column;
-          gap: 26px;
+          gap: 22px;
           padding: 52px 68px;
           border-radius: 10px;
           box-sizing: border-box;
+          animation: gdvRevealIn 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .gdv-quiz-result { animation: none; }
+        }
+        @keyframes gdvRevealIn {
+          from { opacity: 0; transform: scale(0.97); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .gdv-quiz-result-header {
+          display: flex;
+          justify-content: flex-start;
+        }
+        .gdv-quiz-qnum-result {
+          background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-muted) 100%);
         }
         .gdv-quiz-result-success {
           background: linear-gradient(180deg, rgba(63,174,111,0.22) 0%, rgba(7,8,4,0.55) 55%);
           border: 2px solid #3fae6f;
+          box-shadow: inset 0 0 90px rgba(63,174,111,0.14), 0 0 60px rgba(63,174,111,0.18);
         }
         .gdv-quiz-result-wrong {
           background: linear-gradient(180deg, rgba(217,55,68,0.24) 0%, rgba(7,8,4,0.55) 55%);
           border: 3px solid #d93744;
-          box-shadow: inset 0 0 90px rgba(217,55,68,0.16);
+          box-shadow: inset 0 0 90px rgba(217,55,68,0.16), 0 0 60px rgba(217,55,68,0.2);
         }
         .gdv-quiz-result-neutral {
           background: linear-gradient(180deg, rgba(212,176,85,0.16) 0%, rgba(7,8,4,0.55) 55%);
@@ -1659,7 +1680,7 @@ export default function Presentation() {
       {/* גוף השקופית */}
       <div className={`gdv-stage ${FLUSH_TYPES.has(slide.type) ? (PHOTO_FLUSH_TYPES.has(slide.type) ? "gdv-stage-flush-photo" : "gdv-stage-flush") : ""}`} ref={containerRef}>
         <div className={`gdv-slide-anim ${FLUSH_TYPES.has(slide.type) ? "gdv-slide-anim-flush" : ""}`} key={current}>
-          <SlideContent slide={slide} quizVotes={quizVotes} onVote={castVote} />
+          <SlideContent slide={slide} quizVotes={quizVotes} />
         </div>
       </div>
 
