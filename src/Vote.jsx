@@ -175,18 +175,37 @@ export default function Vote({ devMode = true }) {
     screen = "revealed";
   }
 
+  // key ייחודי למסך המוצג כרגע (מסך+שאלה) — בכל מעבר קדימה/אחורה בין
+  // שאלות או בין מצבים (הצבעה/המתנה/חשיפה), ה-key משתנה וה-div מתחת
+  // מתחלף מחדש ב-DOM, מה שמפעיל את אנימציית ה-fade-in ונותן תחושת
+  // "צעד קדימה" חלקה גם כשהמעבר מגיע מ-polling ברקע.
+  const screenKey = `${screen}-${questionId ?? "none"}`;
+
   return (
     <div style={styles.screen} dir="rtl">
-      {screen === "waiting" && <WaitingState />}
-      {screen === "active" && (
-        <ActiveState question={question} onSelect={handleSelect} />
-      )}
-      {screen === "locked-waiting" && (
-        <LockedWaitingState question={question} selected={answeredKey} />
-      )}
-      {screen === "revealed" && (
-        <RevealedState question={question} selected={answeredKey} />
-      )}
+      <style>{`
+        @keyframes gdvVoteFadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .gdv-vote-anim { animation: gdvVoteFadeIn 0.35s ease; }
+        @media (prefers-reduced-motion: reduce) {
+          .gdv-vote-anim { animation: none; }
+        }
+      `}</style>
+
+      <div className="gdv-vote-anim" key={screenKey} style={styles.animWrap}>
+        {screen === "waiting" && <WaitingState />}
+        {screen === "active" && (
+          <ActiveState question={question} onSelect={handleSelect} />
+        )}
+        {screen === "locked-waiting" && (
+          <LockedWaitingState question={question} selected={answeredKey} />
+        )}
+        {screen === "revealed" && (
+          <RevealedState question={question} selected={answeredKey} />
+        )}
+      </div>
 
       {devMode && (
         <DevControls
@@ -441,6 +460,12 @@ const styles = {
     boxSizing: "border-box",
     paddingBottom: 44,
     position: "relative",
+  },
+  animWrap: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
   },
   centerWrap: {
     flex: 1,
