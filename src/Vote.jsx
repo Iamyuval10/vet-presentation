@@ -224,6 +224,10 @@ export default function Vote({ devMode = true }) {
   const question = isQuestionSlide && questionId ? QUESTION_OPTIONS[questionId] : null;
   const answeredKey = questionId != null ? sessionRecord.answers[questionId] : undefined;
   const hasAnswered = answeredKey != null;
+  // האם המכשיר הזה כבר ענה על שאלה כלשהי ב-session הנוכחי — נבדק מול
+  // sessionRecord (מגובה ב-localStorage), ומשמש לבחירת הניסוח המתאים
+  // במסך ההמתנה: "מתחילים" לפני השאלה הראשונה, "ממשיכים" אחריה.
+  const hasAnsweredAnyQuestion = Object.keys(sessionRecord.answers).length > 0;
 
   const handleSelect = (key) => {
     if (status !== "active" || hasAnswered || !questionId) return;
@@ -278,7 +282,7 @@ export default function Vote({ devMode = true }) {
       `}</style>
 
       <div className="gdv-vote-anim" key={screenKey} style={styles.animWrap}>
-        {screen === "waiting" && <WaitingState />}
+        {screen === "waiting" && <WaitingState hasAnsweredAnyQuestion={hasAnsweredAnyQuestion} />}
         {screen === "active" && (
           <ActiveState question={question} onSelect={handleSelect} />
         )}
@@ -302,12 +306,19 @@ export default function Vote({ devMode = true }) {
   );
 }
 
-function WaitingState() {
+/**
+ * מסך המתנה כללי, המוצג בכל שקופית שאינה שאלה. הניסוח משתנה לפי
+ * העבר של המשתתף ב-session הנוכחי: לפני שענה על אף שאלה — "מתחילים";
+ * אחרי שכבר ענה על שאלה אחת לפחות — "ממשיכים".
+ */
+function WaitingState({ hasAnsweredAnyQuestion }) {
   return (
     <div style={styles.centerWrap}>
       <div style={styles.pulseDot} />
       <p style={styles.waitingTitle}>השיעור בעיצומו...</p>
-      <p style={styles.waitingSubtitle}>תיכף מתחילים בשאלות!</p>
+      <p style={styles.waitingSubtitle}>
+        {hasAnsweredAnyQuestion ? "תיכף ממשיכים בשאלות!" : "תיכף מתחילים בשאלות!"}
+      </p>
     </div>
   );
 }
