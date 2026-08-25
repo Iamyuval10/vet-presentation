@@ -19,11 +19,17 @@ import { subscribeToPath, incrementVote } from "./firebaseRest";
  *  - בלחיצה על תשובה, כותב הצבעה לנתיב votes/{questionId}/{option}
  *    (GET ואז PATCH דרך fetch רגיל — ראו incrementVote בקובץ
  *    firebaseRest.js), ושומר את הבחירה מקומית (localStorage, לפי מספר
- *    שאלה) כדי שהמכשיר הזה לא יוכל להצביע פעמיים לאותה שאלה, גם אחרי
- *    רענון עמוד — ויעבור מיד למסך "ממתין לשאלה הבאה" עם הבחירה נעולה,
- *    בלי לחשוף אם היא נכונה או לא.
+ *    שאלה ומזהה ה-session הנוכחי) כדי שהמכשיר הזה לא יוכל להצביע
+ *    פעמיים לאותה שאלה, גם אחרי רענון עמוד/סגירת טאב — ויעבור מיד
+ *    למסך "ממתין לשאלה הבאה" עם הבחירה נעולה, בלי לחשוף אם היא נכונה.
  *  - התשובה הנכונה/הסבר נחשפים אך ורק כשה-status הופך ל-"revealed"
  *    (כלומר כשהמרצה מעביר בפועל את המצגת לשקופית התוצאה).
+ *  - כל עליית/רענון של עמוד המצגת הראשית (Presentation.jsx) משדרת
+ *    sessionId חדש דרך currentSession. הטלפון משווה אותו למה שהוא שמר
+ *    מקומית: אם הוא שונה, זה סימן שהמרצה התחיל מפגש חדש — כל התשובות
+ *    השמורות נמחקות אוטומטית, והמשתמש חוזר להיות משתתף "נקי" שיכול
+ *    להצביע מחדש על כל שאלה. מזהה המכשיר עצמו (voterId) קבוע לצמיתות
+ *    ואינו מתאפס בין sessions.
  *  - דורש קובץ firebaseRest.js (ראו ./firebaseRest) עם אותה כתובת
  *    Database URL כמו שמוגדרת ברכיב המצגת הראשית, כדי ששני הצדדים
  *    יתחברו לאותו מסד נתונים.
@@ -92,40 +98,84 @@ const COLORS = {
 const PHONE_OPTION_KEYS = ["a", "b", "c", "d"];
 const OPTION_LABELS = { a: "א", b: "ב", c: "ג", d: "ד" };
 
-// מפתח האחסון המקומי (localStorage) שבו נשמרות תשובות המשתמש לפי מספר
-// שאלה — כך שאם המרצה חוזר לשאלה שכבר נענתה (או שהמכשיר רענן את העמוד),
-// הבחירה הקודמת נזכרת ומוצגת נעולה, בלי לאפשר הצבעה כפולה.
-const ANSWERS_STORAGE_KEY = "gdv-vote-answers";
+// מזהה מכשיר/משתתף קבוע — נוצר פעם אחת בלבד ונשמר לצמיתות ב-localStorage
+// (לא מתאפס אף פעם, גם לא בין sessions), כדי לזהות את אותו טלפון לאורך
+// כל השימושים באפליקציה.
+const VOTER_ID_KEY = "gdv-voter-id";
 
-function loadStoredAnswers() {
-  if (typeof window === "undefined") return {};
+// מפתח האחסון המקומי שבו נשמרות תשובות המשתמש, יחד עם ה-sessionId שאליו
+// הן שייכות: { sessionId, answers: { [questionNumber]: optionKey } }.
+// כל עוד ה-sessionId תואם למה שמשודר כרגע מהמצגת הראשית, התשובות
+// נשארות תקפות ונטענות מחדש בכל רענון/פתיחה מחדש של הטלפון — אך ברגע
+// שהמרצה מרענן את עמוד המצגת (ומשדר sessionId חדש), הרשומה כולה
+// מתאפסת אוטומטית וכל שאלה נפתחת מחדש להצבעה.
+const SESSION_STORAGE_KEY = "gdv-vote-session";
+
+function generateId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getOrCreateVoterId() {
+  if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(ANSWERS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    let id = window.localStorage.getItem(VOTER_ID_KEY);
+    if (!id) {
+      id = generateId();
+      window.localStorage.setItem(VOTER_ID_KEY, id);
+    }
+    return id;
   } catch {
-    return {};
+    return null;
   }
 }
 
-function saveStoredAnswers(answers) {
+function loadStoredSession() {
+  if (typeof window === "undefined") return { sessionId: null, answers: {} };
   try {
-    window.localStorage.setItem(ANSWERS_STORAGE_KEY, JSON.stringify(answers));
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return { sessionId: null, answers: {} };
+    const parsed = JSON.parse(raw);
+    return {
+      sessionId: parsed.sessionId || null,
+      answers: parsed.answers || {},
+    };
+  } catch {
+    return { sessionId: null, answers: {} };
+  }
+}
+
+function saveStoredSession(record) {
+  try {
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(record));
   } catch {
     // localStorage לא זמין (מצב פרטי/חסום) — לא קריטי, פשוט לא נשמר בין רענונים
   }
 }
 
 export default function Vote({ devMode = true }) {
-  // תשובות שכבר נשלחו ע"י המכשיר הזה, לפי מספר שאלה: { [questionNumber]: optionKey }
-  const [answeredMap, setAnsweredMap] = useState(loadStoredAnswers);
+  // מזהה המכשיר הזה — קבוע לצמיתות, לא תלוי ב-session (נוצר פעם אחת
+  // ולעולם לא מתאפס). נשמר כרגע רק ב-localStorage; לא נדרש להצבעה
+  // עצמה (שהיא מונה פשוט ב-Firebase), אך מבטיח לכל טלפון זהות יציבה
+  // לאורך כל השימושים באפליקציה.
+  const [voterId] = useState(getOrCreateVoterId);
+
+  // רשומת ה-session המקומית: { sessionId, answers: {[questionNumber]: optionKey} }.
+  // נטענת מ-localStorage באתחול כדי לשרוד רענון/סגירה-ופתיחה-מחדש של
+  // הטאב, כל עוד עדיין מדובר באותו session שהמרצה שידר.
+  const [sessionRecord, setSessionRecord] = useState(loadStoredSession);
 
   // --- מצב פנימי לשימוש סרגל הבדיקה בלבד ---
   const [devStatus, setDevStatus] = useState("waiting"); // waiting | active | revealed
   const [devQuestionId, setDevQuestionId] = useState(1);
 
   // --- מצב ייצור: פולינג על currentSession ב-Firebase (REST, fetch כל 1.5 שנ') ---
-  // status: "waiting" | "active" | "revealed"
-  const [liveSession, setLiveSession] = useState({ status: "waiting", activeQuestionId: null });
+  // status: "waiting" | "active" | "revealed", וגם sessionId — מזהה
+  // ה-session הפעיל כרגע, שמשתנה בכל רענון של עמוד המצגת הראשית.
+  const [liveSession, setLiveSession] = useState({
+    status: "waiting",
+    activeQuestionId: null,
+    sessionId: null,
+  });
 
   useEffect(() => {
     if (devMode) return;
@@ -134,23 +184,40 @@ export default function Vote({ devMode = true }) {
       setLiveSession({
         status: v.status || "waiting",
         activeQuestionId: v.activeQuestionId || null,
+        sessionId: v.sessionId || null,
       });
     });
     return () => unsubscribe();
   }, [devMode]);
 
+  // זיהוי session חדש: בכל פעם שה-sessionId המשודר מהמצגת שונה מזה
+  // ששמור מקומית (המרצה רענן/פתח מחדש את עמוד המצגת), מאפסים לגמרי את
+  // התשובות השמורות בטלפון הזה ומצמידים אותו ל-session החדש — כך
+  // שהמשתמש חוזר להיות משתתף "נקי" שיכול להצביע מחדש על כל שאלה.
+  useEffect(() => {
+    if (devMode) return;
+    const liveId = liveSession.sessionId;
+    if (!liveId) return;
+    setSessionRecord((prev) => {
+      if (prev.sessionId === liveId) return prev;
+      const next = { sessionId: liveId, answers: {} };
+      saveStoredSession(next);
+      return next;
+    });
+  }, [devMode, liveSession.sessionId]);
+
   const status = devMode ? devStatus : liveSession.status;
   const questionId = devMode ? devQuestionId : liveSession.activeQuestionId;
   const question = questionId ? QUESTION_OPTIONS[questionId] : null;
-  const answeredKey = questionId != null ? answeredMap[questionId] : undefined;
+  const answeredKey = questionId != null ? sessionRecord.answers[questionId] : undefined;
   const hasAnswered = answeredKey != null;
 
   const handleSelect = (key) => {
     if (status !== "active" || hasAnswered || !questionId) return;
 
-    setAnsweredMap((prev) => {
-      const next = { ...prev, [questionId]: key };
-      saveStoredAnswers(next);
+    setSessionRecord((prev) => {
+      const next = { ...prev, answers: { ...prev.answers, [questionId]: key } };
+      saveStoredSession(next);
       return next;
     });
 

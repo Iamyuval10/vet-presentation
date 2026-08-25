@@ -707,6 +707,16 @@ function getInitialSlide(total) {
   return 0;
 }
 
+/**
+ * מזהה session חדש וייחודי — נוצר פעם אחת בכל עליית/רענון של עמוד
+ * המצגת, ומשודר ל-Firebase (בתוך currentSession) כדי שכל טלפון מחובר
+ * יוכל לזהות "המרצה התחיל מפגש חדש" (ראו Vote.jsx) ולאפס את עצמו
+ * בהתאם — גם אם המכשיר שלו לא היה מחובר ברגע הרענון עצמו.
+ */
+function generateSessionId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function Presentation() {
   const [current, setCurrent] = useState(() => getInitialSlide(SLIDES.length));
   const total = SLIDES.length;
@@ -723,9 +733,16 @@ export default function Presentation() {
   // למסך התוצאה.
   const [quizVotes, setQuizVotes] = useState({});
 
+  // sessionId ייחודי לעליית המצגת הנוכחית — נוצר פעם אחת (useState עם
+  // אתחול עצל) ונשאר קבוע כל עוד העמוד לא נטען מחדש. כל רענון/פתיחה
+  // מחדש של עמוד המצגת מייצר sessionId חדש לגמרי.
+  const [sessionId] = useState(generateSessionId);
+
   // איפוס אוטומטי בעליית המצגת: בכל פתיחה/רענון של עמוד המצגת (המסך
-  // הראשי בלבד — לא מסך ההצבעה בטלפון), מנקים את כל הקולות שנצברו
-  // ומחזירים את מונה השאלה הפעילה ל-1, כדי שכל הרצאה תתחיל מנתונים נקיים.
+  // הראשי בלבד — לא מסך ההצבעה בטלפון), מנקים את כל הקולות שנצברו,
+  // ומשדרים ל-Firebase session חדש (currentSession עם sessionId טרי,
+  // ללא שאלה פעילה) — כך שכל הרצאה מתחילה מנתונים נקיים, וכל טלפון
+  // מחובר (ראו Vote.jsx) מזהה את ה-session החדש ומאפס את עצמו בהתאם.
   useEffect(() => {
     putPath("votes", null).catch((err) =>
       console.warn("reset votes failed:", err)
@@ -733,7 +750,12 @@ export default function Presentation() {
     putPath("currentQuestion", 1).catch((err) =>
       console.warn("reset currentQuestion failed:", err)
     );
-  }, []);
+    putPath("currentSession", {
+      sessionId,
+      activeQuestionId: null,
+      status: "waiting",
+    }).catch((err) => console.warn("reset currentSession failed:", err));
+  }, [sessionId]);
 
   // שמירת מיקום השקופית הנוכחית ב-sessionStorage בכל שינוי, כדי שרענון
   // עמוד (F5) יחזיר את המרצה לאותה שקופית במקום להתחיל מחדש מההתחלה.
@@ -769,11 +791,15 @@ export default function Presentation() {
     if (slide.type !== "quiz-vote" && slide.type !== "quiz-result") return;
     const questionNumber = QUIZ_ID_TO_NUMBER[slide.quizId];
     if (!questionNumber) return;
+    // PUT מחליף את כל הערך בנתיב, ולכן צריך לכלול את ה-sessionId בכל
+    // כתיבה (אחרת הוא יימחק) — כך שהטלפונים תמיד יודעים גם לאיזו שאלה
+    // לעבור וגם שמדובר עדיין באותו session שאליו הם משויכים.
     putPath("currentSession", {
+      sessionId,
       activeQuestionId: questionNumber,
       status: slide.type === "quiz-vote" ? "active" : "revealed",
     }).catch((err) => console.warn("currentSession update failed:", err));
-  }, [current]);
+  }, [current, sessionId]);
 
   // חישוב קנה-מידה כך שהקנבס (1920x1080) תמיד נכנס במלואו בתוך המסך
   // הזמין, בלי חיתוך ובלי צורך בגלילה — בדיוק כמו הקרנת מצגת אמיתית.
