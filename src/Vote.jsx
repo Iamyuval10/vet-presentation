@@ -306,19 +306,29 @@ export default function Vote({ devMode = true }) {
   );
 }
 
+// שני הניסוחים המלאים של מסך ההמתנה, כמחרוזת שלמה אחת כל אחד (בלי
+// לפצל בין title/subtitle), כדי למנוע כל אי-ודאות סביב סדר התווים
+// כשהם מוצגים יחד ב-DOM. הבחירה ביניהם תלויה אך ורק ב-
+// hasAnsweredAnyQuestion, שמחושב בכל render מחדש מתוך sessionRecord.
+const WAITING_MESSAGE_BEFORE_ANY_ANSWER = "השיעור בעיצומו... תיכף מתחילים בשאלות!";
+const WAITING_MESSAGE_BETWEEN_QUESTIONS = "השיעור בעיצומו... מוכן לשאלה הבאה?";
+
 /**
  * מסך המתנה כללי, המוצג בכל שקופית שאינה שאלה. הניסוח משתנה לפי
- * העבר של המשתתף ב-session הנוכחי: לפני שענה על אף שאלה — "מתחילים";
- * אחרי שכבר ענה על שאלה אחת לפחות — "ממשיכים".
+ * העבר של המשתתף ב-session הנוכחי: לפני שענה על אף שאלה — הודעת
+ * "מתחילים"; אחרי שכבר ענה על שאלה אחת לפחות — הודעת "מוכן לשאלה הבאה".
+ * hasAnsweredAnyQuestion מחושב מחדש בכל render (ראו בהורה), ולכן המסך
+ * מתעדכן אוטומטית ברגע שהמשתמש מצביע בפעם הראשונה ב-session הנוכחי.
  */
 function WaitingState({ hasAnsweredAnyQuestion }) {
+  const message = hasAnsweredAnyQuestion
+    ? WAITING_MESSAGE_BETWEEN_QUESTIONS
+    : WAITING_MESSAGE_BEFORE_ANY_ANSWER;
+
   return (
     <div style={styles.centerWrap}>
       <div style={styles.pulseDot} />
-      <p style={styles.waitingTitle}>השיעור בעיצומו...</p>
-      <p style={styles.waitingSubtitle}>
-        {hasAnsweredAnyQuestion ? "מוכן לשאלה הבאה?" : "תיכף מתחילים בשאלות!"}
-      </p>
+      <p style={styles.waitingTitle}>{message}</p>
     </div>
   );
 }
@@ -594,17 +604,11 @@ const styles = {
     boxShadow: `0 0 0 8px rgba(212, 176, 85, 0.15)`,
   },
   waitingTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 700,
     color: COLORS.textPrimary,
     margin: 0,
-    marginBottom: 10,
-  },
-  waitingSubtitle: {
-    fontSize: 16,
-    fontWeight: 400,
-    color: COLORS.textSecondary,
-    margin: 0,
+    lineHeight: 1.5,
   },
   activeWrap: {
     flex: 1,
