@@ -317,7 +317,7 @@ function WaitingState({ hasAnsweredAnyQuestion }) {
       <div style={styles.pulseDot} />
       <p style={styles.waitingTitle}>השיעור בעיצומו...</p>
       <p style={styles.waitingSubtitle}>
-        {hasAnsweredAnyQuestion ? "תיכף ממשיכים בשאלות!" : "תיכף מתחילים בשאלות!"}
+        {hasAnsweredAnyQuestion ? "מוכן לשאלה הבאה?" : "תיכף מתחילים בשאלות!"}
       </p>
     </div>
   );
