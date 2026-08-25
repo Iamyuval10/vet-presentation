@@ -224,10 +224,13 @@ export default function Vote({ devMode = true }) {
   const question = isQuestionSlide && questionId ? QUESTION_OPTIONS[questionId] : null;
   const answeredKey = questionId != null ? sessionRecord.answers[questionId] : undefined;
   const hasAnswered = answeredKey != null;
-  // האם המכשיר הזה כבר ענה על שאלה כלשהי ב-session הנוכחי — נבדק מול
-  // sessionRecord (מגובה ב-localStorage), ומשמש לבחירת הניסוח המתאים
-  // במסך ההמתנה: "מתחילים" לפני השאלה הראשונה, "ממשיכים" אחריה.
-  const hasAnsweredAnyQuestion = Object.keys(sessionRecord.answers).length > 0;
+
+  // תשובות שנשמרו ב-session הנוכחי (מגובות ב-localStorage דרך
+  // sessionRecord) — הספירה שלהן קובעת איזה ניסוח יוצג במסך ההמתנה:
+  // 0 תשובות שמורות = טרם התחילו שאלות, יותר מ-0 = כבר ענו על שאלה
+  // אחת לפחות וממתינים להמשך.
+  const savedAnswers = sessionRecord.answers;
+  const savedAnswersCount = Object.keys(savedAnswers).length;
 
   const handleSelect = (key) => {
     if (status !== "active" || hasAnswered || !questionId) return;
@@ -282,7 +285,7 @@ export default function Vote({ devMode = true }) {
       `}</style>
 
       <div className="gdv-vote-anim" key={screenKey} style={styles.animWrap}>
-        {screen === "waiting" && <WaitingState hasAnsweredAnyQuestion={hasAnsweredAnyQuestion} />}
+        {screen === "waiting" && <WaitingState savedAnswersCount={savedAnswersCount} />}
         {screen === "active" && (
           <ActiveState question={question} onSelect={handleSelect} />
         )}
@@ -308,22 +311,20 @@ export default function Vote({ devMode = true }) {
 
 // שני הניסוחים המלאים של מסך ההמתנה, כמחרוזת שלמה אחת כל אחד (בלי
 // לפצל בין title/subtitle), כדי למנוע כל אי-ודאות סביב סדר התווים
-// כשהם מוצגים יחד ב-DOM. הבחירה ביניהם תלויה אך ורק ב-
-// hasAnsweredAnyQuestion, שמחושב בכל render מחדש מתוך sessionRecord.
+// כשהם מוצגים יחד ב-DOM.
 const WAITING_MESSAGE_BEFORE_ANY_ANSWER = "השיעור בעיצומו... תיכף מתחילים בשאלות!";
 const WAITING_MESSAGE_BETWEEN_QUESTIONS = "השיעור בעיצומו... מוכן לשאלה הבאה?";
 
 /**
- * מסך המתנה כללי, המוצג בכל שקופית שאינה שאלה. הניסוח משתנה לפי
- * העבר של המשתתף ב-session הנוכחי: לפני שענה על אף שאלה — הודעת
- * "מתחילים"; אחרי שכבר ענה על שאלה אחת לפחות — הודעת "מוכן לשאלה הבאה".
- * hasAnsweredAnyQuestion מחושב מחדש בכל render (ראו בהורה), ולכן המסך
- * מתעדכן אוטומטית ברגע שהמשתמש מצביע בפעם הראשונה ב-session הנוכחי.
+ * מסך המתנה כללי, המוצג בכל שקופית שאינה שאלה. הניסוח נבחר לפי ספירת
+ * התשובות השמורות ב-session הנוכחי (savedAnswersCount, מחושב בהורה
+ * מתוך sessionRecord.answers): 0 = טרם התחילו שאלות, יותר מ-0 = כבר
+ * ענו על שאלה אחת לפחות וממתינים להמשך. מכיוון שהספירה מחושבת מחדש
+ * בכל render, המסך מתעדכן אוטומטית ברגע שהמשתמש מצביע בפעם הראשונה.
  */
-function WaitingState({ hasAnsweredAnyQuestion }) {
-  const message = hasAnsweredAnyQuestion
-    ? WAITING_MESSAGE_BETWEEN_QUESTIONS
-    : WAITING_MESSAGE_BEFORE_ANY_ANSWER;
+function WaitingState({ savedAnswersCount }) {
+  const message =
+    savedAnswersCount > 0 ? WAITING_MESSAGE_BETWEEN_QUESTIONS : WAITING_MESSAGE_BEFORE_ANY_ANSWER;
 
   return (
     <div style={styles.centerWrap}>
@@ -614,12 +615,12 @@ const styles = {
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    padding: "28px 16px 24px",
+    padding: "20px 16px 16px",
     boxSizing: "border-box",
   },
   header: {
     textAlign: "center",
-    marginBottom: 24,
+    marginBottom: 14,
     flexShrink: 0,
   },
   questionNumber: {
@@ -632,16 +633,17 @@ const styles = {
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    gap: 14,
-    justifyContent: "center",
+    gap: 12,
+    justifyContent: "flex-start",
+    overflowY: "auto",
   },
   optionButton: {
     display: "flex",
     alignItems: "center",
     gap: 14,
     width: "100%",
-    minHeight: 76,
-    padding: "16px 18px",
+    minHeight: 64,
+    padding: "14px 16px",
     backgroundColor: "#141510",
     border: "2px solid #2a2c22",
     borderRadius: 16,
@@ -688,7 +690,7 @@ const styles = {
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    padding: "28px 16px 24px",
+    padding: "20px 16px 16px",
     boxSizing: "border-box",
     alignItems: "center",
   },
@@ -697,7 +699,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginBottom: 22,
+    marginBottom: 14,
     flexShrink: 0,
   },
   votedTitle: {
