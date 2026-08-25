@@ -13,9 +13,14 @@ import { subscribeToPath, incrementVote } from "./firebaseRest";
  *
  * חיבור ל-Firebase (devMode=false):
  *  - עושה polling (fetch כל 1.5 שניות) על נתיב currentSession כדי לדעת
- *    איזו שאלה פעילה עכשיו ומה מצבה ("active" = שאלה פתוחה להצבעה,
- *    "revealed" = המרצה עבר למסך התוצאה/הסבר), ועובר אליה אוטומטית
- *    ברגע שהמרצה מעביר שקופית במצגת הראשית.
+ *    האם השקופית הנוכחית במצגת היא בכלל שקופית שאלה (isQuestionSlide),
+ *    ואם כן — איזו שאלה פעילה עכשיו ומה מצבה ("active" = שאלה פתוחה
+ *    להצבעה, "revealed" = המרצה עבר למסך התוצאה/הסבר). כל עוד המרצה
+ *    נמצא על שקופית שאינה שאלה (שער, תוכן, תמונה וכו' — כולל לפני
+ *    שהגיע לשאלה הראשונה), isQuestionSlide הוא false ומוצג מסך המתנה
+ *    כללי ("השיעור בעיצומו... תיכף מתחילים בשאלות!"), בלי לחשוף מספר
+ *    שאלה או ממשק הצבעה כלשהו. המעבר בין המסכים קורה אוטומטית ברגע
+ *    שהמרצה מעביר שקופית במצגת הראשית.
  *  - בלחיצה על תשובה, כותב הצבעה לנתיב votes/{questionId}/{option}
  *    (GET ואז PATCH דרך fetch רגיל — ראו incrementVote בקובץ
  *    firebaseRest.js), ושומר את הבחירה מקומית (localStorage, לפי מספר
@@ -169,12 +174,15 @@ export default function Vote({ devMode = true }) {
   const [devQuestionId, setDevQuestionId] = useState(1);
 
   // --- מצב ייצור: פולינג על currentSession ב-Firebase (REST, fetch כל 1.5 שנ') ---
-  // status: "waiting" | "active" | "revealed", וגם sessionId — מזהה
-  // ה-session הפעיל כרגע, שמשתנה בכל רענון של עמוד המצגת הראשית.
+  // status: "waiting" | "active" | "revealed", isQuestionSlide — האם
+  // השקופית שהמרצה נמצא עליה כרגע היא בכלל שקופית שאלה (הצבעה/תוצאה),
+  // וגם sessionId — מזהה ה-session הפעיל כרגע, שמשתנה בכל רענון של
+  // עמוד המצגת הראשית.
   const [liveSession, setLiveSession] = useState({
     status: "waiting",
     activeQuestionId: null,
     sessionId: null,
+    isQuestionSlide: false,
   });
 
   useEffect(() => {
@@ -185,6 +193,7 @@ export default function Vote({ devMode = true }) {
         status: v.status || "waiting",
         activeQuestionId: v.activeQuestionId || null,
         sessionId: v.sessionId || null,
+        isQuestionSlide: !!v.isQuestionSlide,
       });
     });
     return () => unsubscribe();
@@ -207,8 +216,12 @@ export default function Vote({ devMode = true }) {
   }, [devMode, liveSession.sessionId]);
 
   const status = devMode ? devStatus : liveSession.status;
+  // בדיוק כמו בייצור (isQuestionSlide משודר מ-Presentation.jsx), גם
+  // בסרגל הבדיקה status "waiting" מייצג שקופית לא-שאלה (שער/תוכן/וכו')
+  // — כל שאר הסטטוסים מייצגים שקופית שאלה בפועל.
+  const isQuestionSlide = devMode ? devStatus !== "waiting" : liveSession.isQuestionSlide;
   const questionId = devMode ? devQuestionId : liveSession.activeQuestionId;
-  const question = questionId ? QUESTION_OPTIONS[questionId] : null;
+  const question = isQuestionSlide && questionId ? QUESTION_OPTIONS[questionId] : null;
   const answeredKey = questionId != null ? sessionRecord.answers[questionId] : undefined;
   const hasAnswered = answeredKey != null;
 
@@ -230,8 +243,11 @@ export default function Vote({ devMode = true }) {
     );
   };
 
-  // מסך שיוצג בפועל, לפי status + האם המכשיר כבר ענה על השאלה הנוכחית:
-  //  - waiting: אין שאלה פעילה כרגע
+  // מסך שיוצג בפועל, לפי isQuestionSlide + status + האם המכשיר כבר ענה
+  // על השאלה הנוכחית:
+  //  - waiting: המרצה נמצא על שקופית שאינה שאלה בכלל (שער/תוכן/תמונה
+  //    וכו', כולל לפני שהגיע לשאלה הראשונה) — question יהיה null במקרה
+  //    הזה, ולכן שני התנאים למטה נכשלים ממילא ותמיד נשארים על waiting.
   //  - active + לא ענה: מסך הצבעה
   //  - active + ענה: "ממתין לשאלה הבאה", עם הבחירה נעולה, בלי לחשוף נכון/לא נכון
   //  - revealed: המרצה עבר למסך התוצאה — חושפים אם התשובה שנבחרה הייתה נכונה
@@ -291,7 +307,7 @@ function WaitingState() {
     <div style={styles.centerWrap}>
       <div style={styles.pulseDot} />
       <p style={styles.waitingTitle}>השיעור בעיצומו...</p>
-      <p style={styles.waitingSubtitle}>המתן לשאלה הבאה</p>
+      <p style={styles.waitingSubtitle}>תיכף מתחילים בשאלות!</p>
     </div>
   );
 }

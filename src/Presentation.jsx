@@ -739,10 +739,10 @@ export default function Presentation() {
   const [sessionId] = useState(generateSessionId);
 
   // איפוס אוטומטי בעליית המצגת: בכל פתיחה/רענון של עמוד המצגת (המסך
-  // הראשי בלבד — לא מסך ההצבעה בטלפון), מנקים את כל הקולות שנצברו,
-  // ומשדרים ל-Firebase session חדש (currentSession עם sessionId טרי,
-  // ללא שאלה פעילה) — כך שכל הרצאה מתחילה מנתונים נקיים, וכל טלפון
-  // מחובר (ראו Vote.jsx) מזהה את ה-session החדש ומאפס את עצמו בהתאם.
+  // הראשי בלבד — לא מסך ההצבעה בטלפון), מנקים את כל הקולות שנצברו —
+  // כך שכל הרצאה מתחילה מנתונים נקיים, וכל טלפון מחובר (ראו Vote.jsx)
+  // מזהה את ה-sessionId החדש (משודר בנפרד ע"י אפקט סנכרון השקופית
+  // למטה, שרץ גם הוא כבר בעליית הרכיב) ומאפס את עצמו בהתאם.
   useEffect(() => {
     putPath("votes", null).catch((err) =>
       console.warn("reset votes failed:", err)
@@ -750,11 +750,6 @@ export default function Presentation() {
     putPath("currentQuestion", 1).catch((err) =>
       console.warn("reset currentQuestion failed:", err)
     );
-    putPath("currentSession", {
-      sessionId,
-      activeQuestionId: null,
-      status: "waiting",
-    }).catch((err) => console.warn("reset currentSession failed:", err));
   }, [sessionId]);
 
   // שמירת מיקום השקופית הנוכחית ב-sessionStorage בכל שינוי, כדי שרענון
@@ -781,23 +776,31 @@ export default function Presentation() {
     return () => unsubscribers.forEach((unsub) => unsub());
   }, []);
 
-  // --- סנכרון Firebase (REST): שידור השאלה הפעילה ---
-  // בכל מעבר לשקופית שאלה (הצבעה או תוצאה), משדרים ל-currentSession
-  // (PUT דרך fetch) את מזהה השאלה הפעילה ואת הסטטוס — כך שכל הטלפונים
-  // המחוברים (VoteScreen.jsx, שמבצע polling על אותו נתיב) עוברים
-  // אוטומטית לאותה שאלה, בלי שהמרצה יצטרך לעשות משהו נוסף.
+  // --- סנכרון Firebase (REST): שידור מצב השקופית הפעילה ---
+  // בכל מעבר שקופית (לא רק שקופיות שאלה!), משדרים ל-currentSession
+  // (PUT דרך fetch) האם מדובר בשקופית שאלה (isQuestionSlide), ואם כן
+  // — גם מזהה השאלה והסטטוס. כך כל הטלפונים המחוברים (Vote.jsx, שמבצע
+  // polling על אותו נתיב) יודעים בכל רגע נתון בדיוק מה להציג: כל עוד
+  // המרצה נמצא על שקופית לא-שאלה (שער, תוכן, תמונה וכו') — isQuestionSlide
+  // הוא false וכל הטלפונים מציגים מסך המתנה, ולא נשארים "תקועים" עם
+  // שאלה קודמת שכבר לא רלוונטית.
   useEffect(() => {
     const slide = SLIDES[current];
-    if (slide.type !== "quiz-vote" && slide.type !== "quiz-result") return;
-    const questionNumber = QUIZ_ID_TO_NUMBER[slide.quizId];
-    if (!questionNumber) return;
+    const isQuestionSlide = slide.type === "quiz-vote" || slide.type === "quiz-result";
+    const questionNumber = isQuestionSlide ? QUIZ_ID_TO_NUMBER[slide.quizId] : null;
+
     // PUT מחליף את כל הערך בנתיב, ולכן צריך לכלול את ה-sessionId בכל
-    // כתיבה (אחרת הוא יימחק) — כך שהטלפונים תמיד יודעים גם לאיזו שאלה
-    // לעבור וגם שמדובר עדיין באותו session שאליו הם משויכים.
+    // כתיבה (אחרת הוא יימחק) — כך שהטלפונים תמיד יודעים גם מה להציג
+    // וגם שמדובר עדיין באותו session שאליו הם משויכים.
     putPath("currentSession", {
       sessionId,
-      activeQuestionId: questionNumber,
-      status: slide.type === "quiz-vote" ? "active" : "revealed",
+      isQuestionSlide,
+      activeQuestionId: isQuestionSlide && questionNumber ? questionNumber : null,
+      status: isQuestionSlide
+        ? slide.type === "quiz-vote"
+          ? "active"
+          : "revealed"
+        : "waiting",
     }).catch((err) => console.warn("currentSession update failed:", err));
   }, [current, sessionId]);
 
