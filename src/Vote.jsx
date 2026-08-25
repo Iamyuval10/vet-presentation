@@ -229,12 +229,23 @@ function WaitingState() {
   );
 }
 
+/**
+ * כותרת "שאלה N" — מוצגת בזהות (אותו מבנה/עיצוב) בראש כל מסך שקשור
+ * לשאלה כלשהי (הצבעה פעילה / המתנה נעולה / חשיפת תשובה), כדי שהמספור
+ * יישאר עקבי לחלוטין לאורך כל מסכי הטלפון ויתאם למספר המוצג במצגת.
+ */
+function QuestionHeader({ number }) {
+  return (
+    <div style={styles.header}>
+      <span style={styles.questionNumber}>שאלה {number}</span>
+    </div>
+  );
+}
+
 function ActiveState({ question, onSelect }) {
   return (
     <div style={styles.activeWrap}>
-      <div style={styles.header}>
-        <span style={styles.questionNumber}>שאלה {question.number}</span>
-      </div>
+      <QuestionHeader number={question.number} />
 
       <div style={styles.optionsWrap}>
         {PHONE_OPTION_KEYS.map((key) => (
@@ -260,6 +271,8 @@ function ActiveState({ question, onSelect }) {
 function LockedWaitingState({ question, selected }) {
   return (
     <div style={styles.votedWrap}>
+      <QuestionHeader number={question.number} />
+
       <div style={styles.votedHeader}>
         <Check size={18} strokeWidth={3} color={COLORS.accent} />
         <p style={styles.votedTitle}>תשובתך נקלטה!</p>
@@ -322,6 +335,8 @@ function RevealedState({ question, selected }) {
 
   return (
     <div style={styles.votedWrap}>
+      <QuestionHeader number={question.number} />
+
       <div style={styles.votedHeader}>
         {answered ? (
           isCorrect ? (
