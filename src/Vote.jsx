@@ -246,14 +246,31 @@ export default function Vote({ devMode = true }) {
 
   // גלילה לראש הדף בכל פתיחה ראשונית של האפליקציה וגם בכל מעבר
   // מסך/שאלה (screenKey משתנה) — כדי שהמשתמש תמיד יראה את תחילת המסך
-  // החדש, גם אם הוא היה גלול למטה במסך הקודם.
+  // החדש, גם אם הוא היה גלול למטה במסך הקודם. שתי הקריאות (window.scrollTo
+  // וגם document.documentElement.scrollTop) נדרשות יחד כי בחלק מהדפדפנים
+  // הניידים (בעיקר Safari/iOS ישן) רק אחת מהשתיים בפועל מאפסת את הגלילה
+  // האמיתית של העמוד — במיוחד ברגע הטעינה הראשונית, לפני שהתוכן התייצב.
   useEffect(() => {
     window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
   }, [screenKey]);
 
   return (
     <div style={styles.screen} dir="rtl">
       <style>{`
+        /* איפוס גלובלי ל-html/body/#root: בלי זה, מרווח ברירת-מחדל של
+           הדפדפן (או offset שנוצר מ-scroll restoration) יכול לגרום
+           לעמוד להיטען כשהוא כבר גלול מעט למטה, במיוחד בטלפון. גם
+           height: 100dvh על שלושת הרמות (לא רק על gdv-vote-screen)
+           נחוץ כדי שסרגל הכתובת של הדפדפן הנייד (שמתגלה/נעלם) לא
+           ישאיר את העמוד עם שטח גלילה עודף בטעינה הראשונית. */
+        html, body, #root {
+          margin: 0;
+          padding: 0;
+          overflow-x: hidden;
+          height: 100dvh;
+          scroll-behavior: auto;
+        }
         @keyframes gdvVoteFadeIn {
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
@@ -613,6 +630,7 @@ const styles = {
     boxSizing: "border-box",
     paddingBottom: 44,
     overflow: "hidden",
+    scrollBehavior: "auto",
     position: "relative",
   },
   animWrap: {
