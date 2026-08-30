@@ -779,17 +779,17 @@ export default function Presentation() {
   }, []);
 
   // ניווט מקלדת — תומך גם בשלטי הצגה חומרתיים (כמו Logitech R800),
-  // ששולחים בפועל PageUp/PageDown/חיצים/רווח. המיפוי הוא הסטנדרטי
-  // המקובל בתוכנות מצגות (לא הפוך ל-RTL): PageDown/חץ-למטה/חץ-ימינה/
-  // רווח -> קדימה, PageUp/חץ-למעלה/חץ-שמאלה -> אחורה. preventDefault
-  // על כל המקשים האלה קריטי — בלעדיו הדפדפן עצמו יגלול את העמוד
-  // (PageUp/PageDown/חיצים/רווח כולם גורמים ל-scroll כברירת מחדל).
-  // F5 מפעיל/מכבה מסך מלא במקום לרענן את הדף. גבולות הניווט (לא לפני
-  // שקף 0 / אחרי השקף האחרון) נאכפים כבר בתוך goNext/goPrev עצמם
-  // (Math.min/Math.max).
+  // ששולחים בפועל PageUp/PageDown/חיצים/רווח. המיפוי הוא הפוך ל-RTL
+  // (מותאם לכיווניות התוכן, לא לסטנדרט ה-LTR הרגיל של תוכנות מצגות):
+  // PageUp/חץ-למטה/חץ-שמאלה/רווח -> קדימה, PageDown/חץ-למעלה/חץ-ימינה
+  // -> אחורה. preventDefault על כל המקשים האלה קריטי — בלעדיו הדפדפן
+  // עצמו יגלול את העמוד (PageUp/PageDown/חיצים/רווח כולם גורמים
+  // ל-scroll כברירת מחדל). F5 מפעיל/מכבה מסך מלא במקום לרענן את הדף.
+  // גבולות הניווט (לא לפני שקף 0 / אחרי השקף האחרון) נאכפים כבר בתוך
+  // goNext/goPrev עצמם (Math.min/Math.max).
   useEffect(() => {
-    const NEXT_KEYS = ["PageDown", "ArrowDown", "ArrowRight", " ", "Spacebar"];
-    const PREV_KEYS = ["PageUp", "ArrowUp", "ArrowLeft"];
+    const NEXT_KEYS = ["PageUp", "ArrowDown", "ArrowLeft", " ", "Spacebar"];
+    const PREV_KEYS = ["PageDown", "ArrowUp", "ArrowRight"];
 
     function handleKeyDown(e) {
       if (isInteractiveTarget(e.target)) return;
