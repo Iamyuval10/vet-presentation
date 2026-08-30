@@ -246,12 +246,16 @@ export default function Vote({ devMode = true }) {
 
   // גלילה לראש הדף בכל פתיחה ראשונית של האפליקציה וגם בכל מעבר
   // מסך/שאלה (screenKey משתנה) — כדי שהמשתמש תמיד יראה את תחילת המסך
-  // החדש, גם אם הוא היה גלול למטה במסך הקודם. שתי הקריאות (window.scrollTo
-  // וגם document.documentElement.scrollTop) נדרשות יחד כי בחלק מהדפדפנים
-  // הניידים (בעיקר Safari/iOS ישן) רק אחת מהשתיים בפועל מאפסת את הגלילה
-  // האמיתית של העמוד — במיוחד ברגע הטעינה הראשונית, לפני שהתוכן התייצב.
-  useEffect(() => {
-    window.scrollTo(0, 0);
+  // החדש, גם אם הוא היה גלול למטה במסך הקודם. useLayoutEffect (ולא
+  // useEffect) רץ באופן סינכרוני לפני שהדפדפן מצייר את הפריים הבא, כדי
+  // שלא יהיה רגע נראה-לעין של offset שגוי לפני האיפוס. behavior: "instant"
+  // מונע קפיצה "חלקה" (smooth) שעלולה להשאיר את המסך גלול חלקית באמצע
+  // המעבר; body.scrollTop/documentElement.scrollTop נכתבים בנוסף
+  // ל-window.scrollTo כי דפדפנים ניידים שונים (בעיקר Safari/iOS ישן)
+  // משתמשים באלמנט גלילה שונה כ"מקור אמת" בפועל.
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
   }, [screenKey]);
 
@@ -260,16 +264,23 @@ export default function Vote({ devMode = true }) {
       <style>{`
         /* איפוס גלובלי ל-html/body/#root: בלי זה, מרווח ברירת-מחדל של
            הדפדפן (או offset שנוצר מ-scroll restoration) יכול לגרום
-           לעמוד להיטען כשהוא כבר גלול מעט למטה, במיוחד בטלפון. גם
-           height: 100dvh על שלושת הרמות (לא רק על gdv-vote-screen)
-           נחוץ כדי שסרגל הכתובת של הדפדפן הנייד (שמתגלה/נעלם) לא
-           ישאיר את העמוד עם שטח גלילה עודף בטעינה הראשונית. */
+           לעמוד להיטען כשהוא כבר גלול מעט למטה, במיוחד בטלפון.
+           בכוונה בלי height/max-height קשיחים כאן — אלה בדיוק מה שגרם
+           לפס לבן ריק בתחתית העמוד (100dvh לא תמיד תואם בדיוק לגובה
+           האמיתי של viewport הדפדפן הנייד כשה-URL bar מתגלה/נעלם).
+           התוכן זורם באופן טבעי לפי min-height: 100vh על הקונטיינר
+           הראשי (ראו styles.screen), וגולל כרגיל אם הוא ארוך מהמסך. */
         html, body, #root {
           margin: 0;
           padding: 0;
           overflow-x: hidden;
-          height: 100dvh;
-          scroll-behavior: auto;
+        }
+        /* !important כדי לוודא שגלילה תמיד "קופצת" מיידית (ולא
+           "smooth") גם אם דף חיצוני/הרחבת דפדפן הגדירו התנהגות אחרת —
+           גלילה חלקה יכולה להשאיר את המסך גלול-חלקית לרגע בדיוק בזמן
+           מעבר בין שקופיות/שאלות. */
+        html {
+          scroll-behavior: auto !important;
         }
         @keyframes gdvVoteFadeIn {
           from { opacity: 0; transform: translateY(8px); }
@@ -295,12 +306,20 @@ export default function Vote({ devMode = true }) {
       </div>
 
       {devMode && (
-        <DevControls
-          status={devStatus}
-          onStatusChange={setDevStatus}
-          questionId={devQuestionId}
-          onQuestionChange={setDevQuestionId}
-        />
+        <>
+          {/* מרווח בזרימה הרגילה (לא fixed) ששומר מקום כדי שסרגל
+              הבדיקה (fixed בתחתית) לא יכסה את סוף התוכן — עכשיו
+              שהקונטיינר הראשי זורם באופן טבעי (min-height, לא height
+              קשיח), התוכן יכול לגלוש מתחת לגובה המסך, וה-spacer הזה
+              חייב להיות חלק מהזרימה כדי שהגלילה תיקח אותו בחשבון. */}
+          <div style={{ height: 56, flexShrink: 0 }} aria-hidden="true" />
+          <DevControls
+            status={devStatus}
+            onStatusChange={setDevStatus}
+            questionId={devQuestionId}
+            onQuestionChange={setDevQuestionId}
+          />
+        </>
       )}
     </div>
   );
@@ -614,12 +633,13 @@ function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
 }
 
 const styles = {
-  // height (ולא minHeight) + overflow: hidden -> המסך תמיד תופס בדיוק
-  // גובה מסך אחד (100dvh, שמתעדכן נכון גם כשסרגלי הדפדפן במובייל
-  // מתגלים/נעלמים) ולעולם לא גולל, גם אם התוכן הפנימי נדחק.
+  // min-height (ולא height/max-height קשיחים) -> הקונטיינר תמיד תופס
+  // לפחות מסך מלא (100vh), אבל גדל מעבר לזה בזרימה טבעית אם התוכן
+  // דורש יותר מקום, במקום להיחתך/להישאר עם פס ריק בתחתית. padding: 16
+  // הוא ה-inset היחיד סביב התוכן; הוא מוחלף ע"י אלמנטי הבן (הם כבר
+  // לא מוסיפים ריפוד אופקי משלהם, כדי לא להכפיל את השוליים).
   screen: {
-    height: "100dvh",
-    maxHeight: "100dvh",
+    minHeight: "100vh",
     width: "100%",
     backgroundColor: COLORS.bg,
     color: COLORS.textPrimary,
@@ -628,30 +648,27 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     boxSizing: "border-box",
-    paddingBottom: 44,
-    overflow: "hidden",
-    scrollBehavior: "auto",
+    padding: 16,
+    margin: 0,
     position: "relative",
   },
   animWrap: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
-    minHeight: 0,
-    overflow: "hidden",
+    margin: 0,
+    position: "relative",
   },
   centerWrap: {
     flex: 1,
-    minHeight: 0,
     width: "100%",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    padding: "32px 24px",
+    padding: "32px 0",
     textAlign: "center",
     boxSizing: "border-box",
-    overflow: "hidden",
   },
   pulseDot: {
     width: 14,
@@ -674,13 +691,11 @@ const styles = {
   // בלי שום קנה-מידה מוקטן מראש); רק אם המדידה בפועל מגלה שהתוכן לא
   // נכנס בגובה הזמין, הערך יורד וכל calc() התלוי בו מתכווץ יחד איתו.
   activeWrap: {
-    flex: 1,
-    minHeight: 0,
+    width: "100%",
     display: "flex",
     flexDirection: "column",
-    padding: "calc(16px * var(--vote-scale, 1)) 16px calc(12px * var(--vote-scale, 1))",
+    padding: "0 0 calc(12px * var(--vote-scale, 1))",
     boxSizing: "border-box",
-    overflow: "hidden",
   },
   header: {
     textAlign: "center",
@@ -697,14 +712,11 @@ const styles = {
   // מתחת לכותרת (layout מיושר-למעלה); אם יש מקום פנוי מתחת לכרטיס
   // האחרון הוא פשוט נשאר ריק, ולא "נבלע" לתוך מתיחה של הכרטיסים עצמם.
   optionsWrap: {
-    flex: 1,
-    minHeight: 0,
     width: "100%",
     display: "flex",
     flexDirection: "column",
     gap: "calc(12px * var(--vote-scale, 1))",
     justifyContent: "flex-start",
-    overflow: "hidden",
   },
   // ללא flex-grow (אין עוד flex: "1 1 0") — כל כרטיס תשובה מקבל בדיוק
   // את הגובה הטבעי שהתוכן שלו דורש (בקנה-המידה הנוכחי), ולא נמתח כדי
@@ -759,14 +771,11 @@ const styles = {
     flex: 1,
   },
   votedWrap: {
-    flex: 1,
-    minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    padding: "calc(16px * var(--vote-scale, 1)) 16px calc(12px * var(--vote-scale, 1))",
+    padding: "0 0 calc(12px * var(--vote-scale, 1))",
     boxSizing: "border-box",
     alignItems: "center",
-    overflow: "hidden",
     width: "100%",
   },
   votedHeader: {
