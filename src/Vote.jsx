@@ -244,6 +244,13 @@ export default function Vote({ devMode = true }) {
   // "צעד קדימה" חלקה גם כשהמעבר מגיע מ-polling ברקע.
   const screenKey = `${screen}-${questionId ?? "none"}`;
 
+  // גלילה לראש הדף בכל פתיחה ראשונית של האפליקציה וגם בכל מעבר
+  // מסך/שאלה (screenKey משתנה) — כדי שהמשתמש תמיד יראה את תחילת המסך
+  // החדש, גם אם הוא היה גלול למטה במסך הקודם.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [screenKey]);
+
   return (
     <div style={styles.screen} dir="rtl">
       <style>{`
@@ -541,8 +548,12 @@ function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
 }
 
 const styles = {
+  // height (ולא minHeight) + overflow: hidden -> המסך תמיד תופס בדיוק
+  // גובה מסך אחד (100dvh, שמתעדכן נכון גם כשסרגלי הדפדפן במובייל
+  // מתגלים/נעלמים) ולעולם לא גולל, גם אם התוכן הפנימי נדחק.
   screen: {
-    minHeight: "100vh",
+    height: "100dvh",
+    maxHeight: "100dvh",
     width: "100%",
     backgroundColor: COLORS.bg,
     color: COLORS.textPrimary,
@@ -552,6 +563,7 @@ const styles = {
     flexDirection: "column",
     boxSizing: "border-box",
     paddingBottom: 44,
+    overflow: "hidden",
     position: "relative",
   },
   animWrap: {
@@ -559,15 +571,20 @@ const styles = {
     flexDirection: "column",
     flex: 1,
     minHeight: 0,
+    overflow: "hidden",
   },
   centerWrap: {
     flex: 1,
+    minHeight: 0,
+    width: "100%",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     padding: "32px 24px",
     textAlign: "center",
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
   pulseDot: {
     width: 14,
@@ -575,10 +592,11 @@ const styles = {
     borderRadius: "50%",
     backgroundColor: COLORS.accent,
     marginBottom: 28,
+    flexShrink: 0,
     boxShadow: `0 0 0 8px rgba(212, 176, 85, 0.15)`,
   },
   waitingTitle: {
-    fontSize: 20,
+    fontSize: "clamp(16px, 5vw, 20px)",
     fontWeight: 700,
     color: COLORS.textPrimary,
     margin: 0,
@@ -586,44 +604,48 @@ const styles = {
   },
   activeWrap: {
     flex: 1,
+    minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    padding: "20px 16px 16px",
+    padding: "clamp(10px, 3vh, 20px) 16px clamp(8px, 2vh, 16px)",
     boxSizing: "border-box",
+    overflow: "hidden",
   },
   header: {
     textAlign: "center",
-    marginBottom: 14,
+    marginBottom: "clamp(8px, 2vh, 14px)",
     flexShrink: 0,
   },
   questionNumber: {
-    fontSize: 20,
+    fontSize: "clamp(16px, 4.5vw, 20px)",
     fontWeight: 700,
     color: COLORS.accent,
     letterSpacing: 0.3,
   },
   optionsWrap: {
     flex: 1,
+    minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    gap: 12,
-    justifyContent: "flex-start",
-    overflowY: "auto",
+    gap: "clamp(8px, 1.6vh, 12px)",
+    justifyContent: "stretch",
+    overflow: "hidden",
   },
   optionButton: {
     display: "flex",
     alignItems: "center",
     gap: 14,
     width: "100%",
-    minHeight: 64,
-    padding: "14px 16px",
+    flex: "1 1 0",
+    minHeight: 0,
+    padding: "clamp(8px, 1.8vh, 14px) 16px",
     backgroundColor: "#141510",
     border: "2px solid #2a2c22",
     borderRadius: 16,
     color: COLORS.textPrimary,
-    fontSize: 17,
+    fontSize: "clamp(13px, 3.6vw, 17px)",
     fontWeight: 500,
-    lineHeight: 1.4,
+    lineHeight: 1.35,
     textAlign: "right",
     cursor: "pointer",
     boxSizing: "border-box",
@@ -633,12 +655,12 @@ const styles = {
   },
   optionBadge: {
     flexShrink: 0,
-    width: 32,
-    height: 32,
+    width: "clamp(26px, 7vw, 32px)",
+    height: "clamp(26px, 7vw, 32px)",
     borderRadius: "50%",
     backgroundColor: "#2a2c22",
     color: COLORS.textSecondary,
-    fontSize: 15,
+    fontSize: "clamp(12px, 3.2vw, 15px)",
     fontWeight: 700,
     display: "flex",
     alignItems: "center",
@@ -661,32 +683,35 @@ const styles = {
   },
   votedWrap: {
     flex: 1,
+    minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    padding: "20px 16px 16px",
+    padding: "clamp(10px, 3vh, 20px) 16px clamp(8px, 2vh, 16px)",
     boxSizing: "border-box",
     alignItems: "center",
+    overflow: "hidden",
+    width: "100%",
   },
   votedHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginBottom: 14,
+    marginBottom: "clamp(8px, 2vh, 14px)",
     flexShrink: 0,
   },
   votedTitle: {
-    fontSize: 17,
+    fontSize: "clamp(14px, 4vw, 17px)",
     fontWeight: 700,
     color: COLORS.textPrimary,
     margin: 0,
   },
   votedSubtitle: {
-    fontSize: 15,
+    fontSize: "clamp(12px, 3.4vw, 15px)",
     fontWeight: 400,
     color: COLORS.textSecondary,
     margin: 0,
-    marginTop: 22,
+    marginTop: "clamp(10px, 2.4vh, 22px)",
     textAlign: "center",
     flexShrink: 0,
   },
