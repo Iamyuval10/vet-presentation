@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { Check, X } from "lucide-react";
 import { subscribeToPath, incrementVote, QUIZ_ID_TO_NUMBER } from "./firebaseRest";
 import { QUESTIONS } from "./data/questions";
@@ -289,6 +289,52 @@ export default function Vote({ devMode = true }) {
   );
 }
 
+// כרטיסי התשובה שומרים כברירת מחדל על גודל טקסט/ריפוד "נוח" קבוע.
+// רק אם המסך קטן מדי מכדי להכיל את כל האפשרויות בלי גלילה (למשל שאלה
+// עם טקסט ארוך במיוחד — ראו שאלה 4 — על מסך טלפון נמוך), ה-hook הזה
+// מודד את הגובה הטבעי הדרוש מול הגובה הזמין בפועל, ובמקרה כזה בלבד
+// מצמצם קנה-מידה אחיד (חושף אותו כ-CSS custom property --vote-scale
+// על אלמנט השורש, שכל הגדלים המוצמדים לו — טקסט/ריפוד/מרווחים —
+// מוכפלים בו דרך calc()) — כך שהתוכן תמיד נכנס במלואו במסך אחד בלי
+// לגלוש ובלי צורך ב-scroll, ובלי לקטין דבר כשאין בכך צורך.
+const MIN_FIT_SCALE = 0.72;
+
+function useFitScale(deps) {
+  const ref = useRef(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+
+    function measure() {
+      // מדידה תמיד מתבצעת בקנה-מידה טבעי (1), כדי לדעת אם באמת נדרש
+      // כיווץ ביחס לתוכן המלא, ולא ביחס לכיווץ שהוחל בסבב קודם.
+      el.style.setProperty("--vote-scale", "1");
+      const natural = el.scrollHeight;
+      const available = el.clientHeight;
+      if (!available || natural <= available) {
+        setScale(1);
+        return;
+      }
+      setScale(Math.max(MIN_FIT_SCALE, available / natural));
+    }
+
+    measure();
+
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return { ref, scale };
+}
+
 // שני הניסוחים המלאים של מסך ההמתנה, כמחרוזת שלמה אחת כל אחד (בלי
 // לפצל בין title/subtitle), כדי למנוע כל אי-ודאות סביב סדר התווים
 // כשהם מוצגים יחד ב-DOM.
@@ -328,8 +374,9 @@ function QuestionHeader({ number }) {
 }
 
 function ActiveState({ question, onSelect }) {
+  const { ref, scale } = useFitScale([question]);
   return (
-    <div style={styles.activeWrap}>
+    <div ref={ref} style={{ ...styles.activeWrap, "--vote-scale": scale }}>
       <QuestionHeader number={question.number} />
 
       <div style={styles.optionsWrap}>
@@ -354,8 +401,9 @@ function ActiveState({ question, onSelect }) {
  * נכונה — הפידבק מתעכב עד שהמרצה עצמו חושף את התשובה במצגת.
  */
 function LockedWaitingState({ question, selected }) {
+  const { ref, scale } = useFitScale([question, selected]);
   return (
-    <div style={styles.votedWrap}>
+    <div ref={ref} style={{ ...styles.votedWrap, "--vote-scale": scale }}>
       <QuestionHeader number={question.number} />
 
       <div style={styles.votedHeader}>
@@ -417,9 +465,10 @@ function LockedWaitingState({ question, selected }) {
 function RevealedState({ question, selected }) {
   const answered = selected != null;
   const isCorrect = answered && selected === question.correct;
+  const { ref, scale } = useFitScale([question, selected]);
 
   return (
-    <div style={styles.votedWrap}>
+    <div ref={ref} style={{ ...styles.votedWrap, "--vote-scale": scale }}>
       <QuestionHeader number={question.number} />
 
       <div style={styles.votedHeader}>
@@ -602,50 +651,60 @@ const styles = {
     margin: 0,
     lineHeight: 1.5,
   },
+  // activeWrap/votedWrap הם אלמנט השורש שעליו נחשף --vote-scale (ראו
+  // useFitScale למעלה) — ברירת המחדל היא תמיד 1 (גדלים "נוחים" רגילים,
+  // בלי שום קנה-מידה מוקטן מראש); רק אם המדידה בפועל מגלה שהתוכן לא
+  // נכנס בגובה הזמין, הערך יורד וכל calc() התלוי בו מתכווץ יחד איתו.
   activeWrap: {
     flex: 1,
     minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    padding: "clamp(10px, 3vh, 20px) 16px clamp(8px, 2vh, 16px)",
+    padding: "calc(16px * var(--vote-scale, 1)) 16px calc(12px * var(--vote-scale, 1))",
     boxSizing: "border-box",
     overflow: "hidden",
   },
   header: {
     textAlign: "center",
-    marginBottom: "clamp(8px, 2vh, 14px)",
+    marginBottom: "calc(14px * var(--vote-scale, 1))",
     flexShrink: 0,
   },
   questionNumber: {
-    fontSize: "clamp(16px, 4.5vw, 20px)",
+    fontSize: "calc(20px * var(--vote-scale, 1))",
     fontWeight: 700,
     color: COLORS.accent,
     letterSpacing: 0.3,
   },
+  // justifyContent: flex-start -> הכרטיסים תמיד מתחילים מלמעלה, מיד
+  // מתחת לכותרת (layout מיושר-למעלה); אם יש מקום פנוי מתחת לכרטיס
+  // האחרון הוא פשוט נשאר ריק, ולא "נבלע" לתוך מתיחה של הכרטיסים עצמם.
   optionsWrap: {
     flex: 1,
     minHeight: 0,
+    width: "100%",
     display: "flex",
     flexDirection: "column",
-    gap: "clamp(8px, 1.6vh, 12px)",
-    justifyContent: "stretch",
+    gap: "calc(12px * var(--vote-scale, 1))",
+    justifyContent: "flex-start",
     overflow: "hidden",
   },
+  // ללא flex-grow (אין עוד flex: "1 1 0") — כל כרטיס תשובה מקבל בדיוק
+  // את הגובה הטבעי שהתוכן שלו דורש (בקנה-המידה הנוכחי), ולא נמתח כדי
+  // "למלא" את השטח הפנוי, כדי שהטקסט לא ייראה מתוח/מנופח.
   optionButton: {
     display: "flex",
     alignItems: "center",
-    gap: 14,
+    gap: "calc(14px * var(--vote-scale, 1))",
     width: "100%",
-    flex: "1 1 0",
-    minHeight: 0,
-    padding: "clamp(8px, 1.8vh, 14px) 16px",
+    flexShrink: 0,
+    padding: "calc(14px * var(--vote-scale, 1)) calc(16px * var(--vote-scale, 1))",
     backgroundColor: "#141510",
     border: "2px solid #2a2c22",
     borderRadius: 16,
     color: COLORS.textPrimary,
-    fontSize: "clamp(13px, 3.6vw, 17px)",
+    fontSize: "calc(17px * var(--vote-scale, 1))",
     fontWeight: 500,
-    lineHeight: 1.35,
+    lineHeight: 1.4,
     textAlign: "right",
     cursor: "pointer",
     boxSizing: "border-box",
@@ -655,12 +714,12 @@ const styles = {
   },
   optionBadge: {
     flexShrink: 0,
-    width: "clamp(26px, 7vw, 32px)",
-    height: "clamp(26px, 7vw, 32px)",
+    width: "calc(32px * var(--vote-scale, 1))",
+    height: "calc(32px * var(--vote-scale, 1))",
     borderRadius: "50%",
     backgroundColor: "#2a2c22",
     color: COLORS.textSecondary,
-    fontSize: "clamp(12px, 3.2vw, 15px)",
+    fontSize: "calc(15px * var(--vote-scale, 1))",
     fontWeight: 700,
     display: "flex",
     alignItems: "center",
@@ -686,7 +745,7 @@ const styles = {
     minHeight: 0,
     display: "flex",
     flexDirection: "column",
-    padding: "clamp(10px, 3vh, 20px) 16px clamp(8px, 2vh, 16px)",
+    padding: "calc(16px * var(--vote-scale, 1)) 16px calc(12px * var(--vote-scale, 1))",
     boxSizing: "border-box",
     alignItems: "center",
     overflow: "hidden",
@@ -697,21 +756,21 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginBottom: "clamp(8px, 2vh, 14px)",
+    marginBottom: "calc(14px * var(--vote-scale, 1))",
     flexShrink: 0,
   },
   votedTitle: {
-    fontSize: "clamp(14px, 4vw, 17px)",
+    fontSize: "calc(17px * var(--vote-scale, 1))",
     fontWeight: 700,
     color: COLORS.textPrimary,
     margin: 0,
   },
   votedSubtitle: {
-    fontSize: "clamp(12px, 3.4vw, 15px)",
+    fontSize: "calc(15px * var(--vote-scale, 1))",
     fontWeight: 400,
     color: COLORS.textSecondary,
     margin: 0,
-    marginTop: "clamp(10px, 2.4vh, 22px)",
+    marginTop: "calc(16px * var(--vote-scale, 1))",
     textAlign: "center",
     flexShrink: 0,
   },
