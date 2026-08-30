@@ -244,26 +244,42 @@ export default function Vote({ devMode = true }) {
   // "צעד קדימה" חלקה גם כשהמעבר מגיע מ-polling ברקע.
   const screenKey = `${screen}-${questionId ?? "none"}`;
 
-  // הערה: אין כאן שום JS שמאפס גלילה (לא window.scrollTo, לא
-  // scrollTop, לא history.scrollRestoration). הפתרון לבעיית ה"קפיצה"
-  // ב-iOS Safari הוא מבני בלבד: styles.screen הוא position: fixed,
-  // top: 0, left: 0 — כלומר הוא פשוט לא מסוגל להיות גלול מלכתחילה
-  // (הדפדפן לא מציג scrollbar/rubber-band לאלמנט fixed), כך שאין
-  // "מיקום גלילה שגוי" לתקן אחרי הטעינה. ראו גם html/body בבלוק ה-style
-  // למטה (overflow: hidden), שמונעים גלילה של הדף מסביב לאלמנט הקבוע.
+  // תיקון "קפיצת" הגלילה הראשונית ב-iOS Safari (בעיקר בפתיחה מסריקת QR):
+  // position: fixed ו-100vh על הקונטיינר הראשי גורמים בפועל לבעיה
+  // הפוכה — ב-iOS, ה-viewport האמיתי מחושב-מחדש רק אחרי אירוע resize
+  // (מעבר טאב/סיבוב מכשיר), כך שבטעינה ראשונית עם position: fixed
+  // התוכן "קופא" במיקום גלילה שגוי עד לאירוע כזה. הפתרון כאן הוא לא
+  // לנעול בכלל (ראו styles.screen: min-height: 100% רגיל, בלי fixed
+  // ובלי height נוקשה), ובנוסף לאלץ בפועל אתחול-מחדש של הגלילה מיד עם
+  // ה-mount: קריאה סינכרונית ל-scrollTo (לפני הציור הראשון, דרך
+  // useLayoutEffect), וקריאה חוזרת אחרי 100ms — כי ב-iOS Safari חישוב
+  // ה-viewport הסופי לפעמים מתעדכן רק כמה עשרות מילישניות אחרי הטעינה
+  // הראשונית (במיוחד כש-URL bar עדיין באנימציית כיווץ).
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    // קורא ל-offsetHeight מכריח reflow סינכרוני, שגורם לדפדפן לחשב
+    // מחדש מיידית את פריסת העמוד לפי ה-viewport האמיתי הנוכחי, בלי
+    // להמתין לאירוע resize חיצוני.
+    void document.body.offsetHeight;
+    const timeoutId = setTimeout(() => window.scrollTo(0, 0), 100);
+    return () => clearTimeout(timeoutId);
+  }, []);
+
   return (
     <div style={styles.screen} dir="rtl">
       <style>{`
-        /* נעילת viewport מוחלטת נגד ה"קפיצה"/הפס השחור ב-iOS Safari
-           אחרי סריקת QR: html/body מקבלים height: 100% + overflow:
-           hidden כדי שהדף עצמו (מסביב לאלמנט ה-fixed) לא יוכל להיגלל
-           או "לקפוץ" בכלל — styles.screen (position: fixed) הוא זה
-           שבפועל ממלא את המסך, ולא body/html "הרגילים". */
+        /* min-height: 100% (לא height/max-height נוקשה, ולא position:
+           fixed) -> ה-viewport מחושב באופן דינמי לפי הדפדפן, בלי לנעול
+           גובה מראש שעלול לא להתעדכן נכון ב-iOS בטעינה ראשונית.
+           background-color זהה לרקע המצגת (COLORS.bg) על שלוש הרמות —
+           כך שגם אם סרגלי הדפדפן הניידים זזים לרגע ומותירים רווח קטן
+           מתחת לתוכן, הוא צבוע כמו הרקע ולא נראה כ"פס לבן". */
         html, body, #root {
           margin: 0;
           padding: 0;
-          height: 100%;
-          overflow: hidden;
+          min-height: 100%;
+          overflow-x: hidden;
+          background-color: ${COLORS.bg};
         }
         @keyframes gdvVoteFadeIn {
           from { opacity: 0; transform: translateY(8px); }
@@ -290,10 +306,11 @@ export default function Vote({ devMode = true }) {
 
       {devMode && (
         <>
-          {/* מרווח קבוע בתוך העמודה (screen הוא height: 100vh קבוע) ששומר
-              מקום כדי שסרגל הבדיקה (fixed בתחתית המסך) לא יכסה את סוף
-              התוכן — גוזל 56px מהתקציב הכולל של animWrap (flex: 1),
-              בדיוק כמו כל תוכן אחר בעמודה. */}
+          {/* מרווח בזרימה הרגילה (לא fixed) ששומר מקום כדי שסרגל הבדיקה
+              (fixed בתחתית המסך) לא יכסה את סוף התוכן — screen זורם
+              באופן טבעי (min-height בלבד, לא locked), כך שהתוכן יכול
+              לגלוש מתחת לגובה המסך, וה-spacer הזה חייב להיות חלק
+              מהזרימה כדי שהגלילה תיקח אותו בחשבון. */}
           <div style={{ height: 56, flexShrink: 0 }} aria-hidden="true" />
           <DevControls
             status={devStatus}
@@ -615,19 +632,14 @@ function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
 }
 
 const styles = {
-  // נעילת viewport: position: fixed + top/left: 0 + height/maxHeight:
-  // 100vh + overflow: hidden. אלמנט fixed לא משתתף בזרימת הגלילה של
-  // הדף בכלל — הדפדפן (כולל iOS Safari) לא יכול "לגלול" אותו או להזיז
-  // אותו ב-rubber-band, כי הוא לא חלק מהתוכן הגלול של body. זה מה
-  // שמונע את הפס השחור/הקפיצה למחצע המסך אחרי סריקת QR, בלי כל צורך
-  // בקוד JS שמאפס גלילה בדיעבד.
+  // min-height: 100% (לא height/max-height נוקשה, ולא position: fixed)
+  // -> הקונטיינר תמיד תופס לפחות את גובה ה-viewport הזמין באמת (לפי
+  // % דינמי, לא vh מחושב-מראש), אבל לא "נועל" את הדף וגם לא מונע ממנו
+  // לגדול/להיגלל אם התוכן דורש יותר. position: fixed גרם בפועל להקפאת
+  // ה-viewport במיקום שגוי ב-iOS Safari בטעינה ראשונית (עד אירוע
+  // resize) — זו בדיוק הבעיה שהוחלפה כאן.
   screen: {
-    height: "100vh",
-    maxHeight: "100vh",
-    overflow: "hidden",
-    position: "fixed",
-    top: 0,
-    left: 0,
+    minHeight: "100%",
     width: "100%",
     backgroundColor: COLORS.bg,
     color: COLORS.textPrimary,
@@ -635,24 +647,20 @@ const styles = {
       "'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     display: "flex",
     flexDirection: "column",
-    justifyContent: "flex-start",
-    alignItems: "stretch",
     boxSizing: "border-box",
     padding: 12,
     margin: 0,
+    position: "relative",
   },
   animWrap: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
-    minHeight: 0,
-    overflow: "hidden",
     margin: 0,
     position: "relative",
   },
   centerWrap: {
     flex: 1,
-    minHeight: 0,
     width: "100%",
     display: "flex",
     flexDirection: "column",
@@ -661,7 +669,6 @@ const styles = {
     padding: "24px 0",
     textAlign: "center",
     boxSizing: "border-box",
-    overflow: "hidden",
   },
   pulseDot: {
     width: 14,
@@ -684,14 +691,11 @@ const styles = {
   // בלי שום קנה-מידה מוקטן מראש); רק אם המדידה בפועל מגלה שהתוכן לא
   // נכנס בגובה הזמין, הערך יורד וכל calc() התלוי בו מתכווץ יחד איתו.
   activeWrap: {
-    flex: 1,
-    minHeight: 0,
     width: "100%",
     display: "flex",
     flexDirection: "column",
     padding: "0 0 calc(12px * var(--vote-scale, 1))",
     boxSizing: "border-box",
-    overflow: "hidden",
   },
   header: {
     textAlign: "center",
@@ -704,22 +708,18 @@ const styles = {
     color: COLORS.accent,
     letterSpacing: 0.3,
   },
-  // flex: 1 + minHeight: 0 + overflow: hidden -> זהו האזור שחייב "להיכנס"
-  // בדיוק בגובה הזמין (מה שנשאר אחרי הכותרת בתוך activeWrap/votedWrap,
-  // שגם הם מוגבלים לגובה המסך). useFitScale (ראו למעלה) מודד את הגובה
-  // הזה בפועל ומכווץ קנה-מידה אחיד (--vote-scale) אם 4 הכרטיסים לא
-  // נכנסים בו — כך שהם "מתכווצים באופן פרופורציונלי" בלי scroll,
-  // בלי להימתח (justifyContent: flex-start משאיר אותם בגודלם הטבעי,
-  // מיושרים למעלה, במקום מתיחה שווה שגורמת לטקסט להיראות מנופח).
+  // justifyContent: flex-start -> הכרטיסים מתחילים מלמעלה ותופסים כל
+  // אחד את הגובה הטבעי שהתוכן שלו דורש; אם התוכן ארוך מדי (למשל שאלה
+  // עם טקסט ארוך על מסך קטן), useFitScale עדיין מכווץ קנה-מידה אחיד
+  // (--vote-scale) כדי לצמצם למינימום את הסיכוי לגלילה, אבל בלי
+  // overflow: hidden כאן — כדי שאם בכל זאת נדרשת גלילה (למשל מסך קטן
+  // וטקסט ארוך מהמינימום), הדף יגלול כרגיל במקום לחתוך תוכן.
   optionsWrap: {
-    flex: 1,
-    minHeight: 0,
     width: "100%",
     display: "flex",
     flexDirection: "column",
     gap: "calc(12px * var(--vote-scale, 1))",
     justifyContent: "flex-start",
-    overflow: "hidden",
   },
   // ללא flex-grow (אין עוד flex: "1 1 0") — כל כרטיס תשובה מקבל בדיוק
   // את הגובה הטבעי שהתוכן שלו דורש (בקנה-המידה הנוכחי), ולא נמתח כדי
@@ -774,14 +774,11 @@ const styles = {
     flex: 1,
   },
   votedWrap: {
-    flex: 1,
-    minHeight: 0,
     display: "flex",
     flexDirection: "column",
     padding: "0 0 calc(12px * var(--vote-scale, 1))",
     boxSizing: "border-box",
     alignItems: "center",
-    overflow: "hidden",
     width: "100%",
   },
   votedHeader: {
