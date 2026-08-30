@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Check, X } from "lucide-react";
-import { subscribeToPath, incrementVote } from "./firebaseRest";
+import { subscribeToPath, incrementVote, QUIZ_ID_TO_NUMBER } from "./firebaseRest";
+import { QUESTIONS } from "./data/questions";
 
 /**
  * Vote.jsx
@@ -47,49 +48,22 @@ import { subscribeToPath, incrementVote } from "./firebaseRest";
 
 // מאגר אפשרויות התשובה לכל שאלה (המלל שמוצג בטלפון + התשובה הנכונה),
 // לפי מספר השאלה התואם בדיוק לסדר הופעתה במצגת הראשית (ראו
-// QUIZ_ID_TO_NUMBER ב-firebaseRest.js).
-const QUESTION_OPTIONS = {
-  1: {
-    number: 1,
-    correct: "b",
-    options: {
-      a: "הסיכון מושפע אך ורק ממבנה גוף אנטומי בעל חזה עמוק.",
-      b: "הסיכון מושפע משילוב של אנטומיה (חזה עמוק), תזונה (ארוחות גדולות) וגורמים התנהגותיים/סטרס.",
-      c: "הסיכון מוגבר אך ורק בשל גורמים תזונתיים של האכלה בארוחה אחת גדולה ביום.",
-      d: "הסיכון תלוי אך ורק במצבו הנפשי של הכלב ובפרופיל החרדתי שלו.",
-    },
-  },
-  2: {
-    number: 2,
-    correct: "c",
-    options: {
-      a: 'נסיונות הקאה לא אפקטיביים ("על ריק").',
-      b: "ריור מוגבר וקושי בבליעה.",
-      c: "דופק מהיר וחלש וריריות בצבע אדום בוהק.",
-      d: "נפיחות בטנית, כאב ואי-שקט.",
-    },
-  },
-  3: {
-    number: 3,
-    correct: "c",
-    options: {
-      a: "דיקור קיר הגוף להוצאת אוויר (דקומפרסיה).",
-      b: "הכנסת צינור קיבה ושטיפתה.",
-      c: "פתיחת וריד ברגל אחורית ומתן נוזלים בקצב מהיר.",
-      d: "ניתוח גסטרופקסיה לתפירת הקיבה לקיר הגוף.",
-    },
-  },
-  4: {
-    number: 4,
-    correct: "b",
-    options: {
-      a: "המשך ניטור אינטנסיבי מחשש להופעת סיבוכים מאוחרים (כגון הפרעות קצב).",
-      b: "שקילת הערת הכלב ושחרורו למעקב בלבד מאחר והצינור עבר והוא התייצב.",
-      c: "התייחסות למקרה כמצב חירום קליני הדורש המשך טיפול אינטנסיבי.",
-      d: "התחשבות ברמת הסטרס והלחץ של הכלב כחלק מניהול הטיפול.",
-    },
-  },
-};
+// QUIZ_ID_TO_NUMBER ב-firebaseRest.js). נבנה אוטומטית מתוך
+// src/data/questions.js — מקור האמת המשותף גם למצגת הראשית (ראו
+// Presentation.jsx) — כך שתוכן השאלות (כולל מספר האפשרויות בפועל,
+// למשל שאלה עם 3 אפשרויות בלבד) מסונכרן תמיד בין שני הקבצים.
+const QUESTION_OPTIONS = Object.fromEntries(
+  Object.entries(QUESTIONS).map(([quizId, q]) => {
+    const number = QUIZ_ID_TO_NUMBER[quizId];
+    const options = {};
+    let correct = null;
+    q.options.forEach((opt) => {
+      options[opt.id] = opt.text;
+      if (opt.correct) correct = opt.id;
+    });
+    return [number, { number, correct, options }];
+  })
+);
 
 const COLORS = {
   bg: "#070804",
@@ -100,7 +74,6 @@ const COLORS = {
   wrong: "#d93744",
 };
 
-const PHONE_OPTION_KEYS = ["a", "b", "c", "d"];
 const OPTION_LABELS = { a: "א", b: "ב", c: "ג", d: "ד" };
 
 // מזהה מכשיר/משתתף קבוע — נוצר פעם אחת בלבד ונשמר לצמיתות ב-localStorage
@@ -353,7 +326,7 @@ function ActiveState({ question, onSelect }) {
       <QuestionHeader number={question.number} />
 
       <div style={styles.optionsWrap}>
-        {PHONE_OPTION_KEYS.map((key) => (
+        {Object.keys(question.options).map((key) => (
           <button
             key={key}
             onClick={() => onSelect(key)}
@@ -384,7 +357,7 @@ function LockedWaitingState({ question, selected }) {
       </div>
 
       <div style={styles.optionsWrap}>
-        {PHONE_OPTION_KEYS.map((key) => {
+        {Object.keys(question.options).map((key) => {
           const isSelected = selected === key;
           return (
             <div
@@ -465,7 +438,7 @@ function RevealedState({ question, selected }) {
       </div>
 
       <div style={styles.optionsWrap}>
-        {PHONE_OPTION_KEYS.map((key) => {
+        {Object.keys(question.options).map((key) => {
           const isSelected = selected === key;
           const isRight = key === question.correct;
           const rowStyle = isRight

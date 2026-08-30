@@ -6,6 +6,7 @@ import {
   QUIZ_ID_TO_NUMBER,
   NUMBER_TO_QUIZ_ID,
 } from "./firebaseRest";
+import { QUESTIONS } from "./data/questions";
 
 /**
  * GDV — היפוך קיבה | קורס מדריכים
@@ -131,31 +132,8 @@ const SLIDES = [
       `הפרעות במנגנון השיהוק. כמו כן נמצא קשר לשינה ולהרדמה.`,
     ],
   },
-  {
-    type: "quiz-vote",
-    quizId: `riskFactors`,
-    scenario: `בשיחה על רפואה מונעת במרפאה, עולה השאלה אילו גורמים תורמים להתפתחות תסמונת היפוך קיבה. איזה מבין המשפטים הבאים מתאר בצורה המקיפה והנכונה ביותר את גורמי הסיכון שהוכחו במחקרים?`,
-    options: [
-      { id: "a", text: `הסיכון מושפע אך ורק ממבנה גוף אנטומי בעל חזה עמוק.`, correct: false },
-      { id: "b", text: `הסיכון מושפע משילוב של אנטומיה (חזה עמוק), תזונה (ארוחות גדולות) וגורמים התנהגותיים/סטרס.`, correct: true },
-      { id: "c", text: `הסיכון מוגבר אך ורק בשל גורמים תזונתיים של האכלה בארוחה אחת גדולה ביום.`, correct: false },
-      { id: "d", text: `הסיכון תלוי אך ורק במצבו הנפשי של הכלב ובפרופיל החרדתי שלו.`, correct: false },
-    ],
-  },
-  {
-    type: "quiz-result",
-    quizId: `riskFactors`,
-    scenario: `בשיחה על רפואה מונעת במרפאה, עולה השאלה אילו גורמים תורמים להתפתחות תסמונת היפוך קיבה. איזה מבין המשפטים הבאים מתאר בצורה המקיפה והנכונה ביותר את גורמי הסיכון שהוכחו במחקרים?`,
-    options: [
-      { id: "a", text: `הסיכון מושפע אך ורק ממבנה גוף אנטומי בעל חזה עמוק.`, correct: false },
-      { id: "b", text: `הסיכון מושפע משילוב של אנטומיה (חזה עמוק), תזונה (ארוחות גדולות) וגורמים התנהגותיים/סטרס.`, correct: true },
-      { id: "c", text: `הסיכון מוגבר אך ורק בשל גורמים תזונתיים של האכלה בארוחה אחת גדולה ביום.`, correct: false },
-      { id: "d", text: `הסיכון תלוי אך ורק במצבו הנפשי של הכלב ובפרופיל החרדתי שלו.`, correct: false },
-    ],
-    feedbackCorrect: `מדויק! היפוך קיבה הוא תסמונת מולטי-פקטוריאלית המושפעת משילוב של אנטומיה, תזונה וגורמים התנהגותיים.`,
-    feedbackWrongPart1: `התשובות האחרות מצמצמות את הסיכון לגורם יחיד בלבד, בעוד שבפועל מדובר בשילוב גורמים.`,
-    feedbackWrongPart2: `התשובה הנכונה היא ב' — המחקרים מראים בבירור שרק שילוב של כלל הגורמים (אנטומיה, תזונה וסטרס) מעלה את הסיכון באופן משמעותי.`,
-  },
+  { type: "quiz-vote", quizId: `riskFactors` },
+  { type: "quiz-result", quizId: `riskFactors` },
   {
     // slide_11.png — כלב עומד על רגליים אחוריות (תסמין), + לינק לסרטון הדגמה
     type: "list",
@@ -185,31 +163,8 @@ const SLIDES = [
     caption: `צילום רנטגן`,
     image: { src: "/GDV-images/slide_12.png", alt: `צילום רנטגן — התנפחות והיפוך הקיבה` },
   },
-  {
-    type: "quiz-vote",
-    quizId: `diagnosis`,
-    scenario: `כלב מובא בחירום למרפאה עם חשד כבד להיפוך קיבה (GDV). הווטרינר ניגש לבצע בדיקה פיזיקלית ראשונית והערכת תסמינים. איזה מהממצאים הבאים הוא הפחות סביר לצפייה בבדיקה?`,
-    options: [
-      { id: "a", text: `ניסיונות הקאה לא אפקטיביים ("על ריק").`, correct: false },
-      { id: "b", text: `ריור מוגבר וקושי בבליעה.`, correct: false },
-      { id: "c", text: `דופק מהיר וחלש וריריות בצבע אדום בוהק.`, correct: true },
-      { id: "d", text: `נפיחות בטנית, כאב ואי-שקט.`, correct: false },
-    ],
-  },
-  {
-    type: "quiz-result",
-    quizId: `diagnosis`,
-    scenario: `כלב מובא בחירום למרפאה עם חשד כבד להיפוך קיבה (GDV). הווטרינר ניגש לבצע בדיקה פיזיקלית ראשונית והערכת תסמינים. איזה מהממצאים הבאים הוא הפחות סביר לצפייה בבדיקה?`,
-    options: [
-      { id: "a", text: `ניסיונות הקאה לא אפקטיביים ("על ריק").`, correct: false },
-      { id: "b", text: `ריור מוגבר וקושי בבליעה.`, correct: false },
-      { id: "c", text: `דופק מהיר וחלש וריריות בצבע אדום בוהק.`, correct: true },
-      { id: "d", text: `נפיחות בטנית, כאב ואי-שקט.`, correct: false },
-    ],
-    feedbackCorrect: `אבחנה מבוססת! ב-GDV הכלב נמצא בשוק היפווולמי, ולכן הריריות יהיו חיוורות מאוד, אפורות או ציאנוטיות, ולא אדומות בוהקות.`,
-    feedbackWrongPart1: `הקאות על ריק, ריור ונפיחות הן אכן תופעות שכיחות ב-GDV, אך הן לא הממצא הפחות סביר בבדיקה.`,
-    feedbackWrongPart2: `התשובה הנכונה היא ג' — במצב של GDV הכלב שרוי בשוק היפווולמי מתקדם, ומצופה לראות ריריות חיוורות או אפורות ולא אדומות בוהקות.`,
-  },
+  { type: "quiz-vote", quizId: `diagnosis` },
+  { type: "quiz-result", quizId: `diagnosis` },
   {
     // slide_13a.png, slide_13b.png, slide_13c.png — לפי סדר א-ב-ג
     type: "list-gallery",
@@ -227,31 +182,8 @@ const SLIDES = [
       { src: "/GDV-images/slide_13c.png", alt: `תיקון כירורגי — תפירת דופן הקיבה לדופן הבטן` },
     ],
   },
-  {
-    type: "quiz-vote",
-    quizId: `treatment`,
-    scenario: `צוות המרפאה נערך לקבלת מקרה GDV ומכין את ציוד ההחייאה והניתוח בהתאם לפרוטוקול הייצוב הסטנדרטי. איזה מהצעדים הבאים אינו חלק מהפרוטוקול הסטנדרטי הנכון?`,
-    options: [
-      { id: "a", text: `דיקור קיר הגוף להוצאת אוויר (דקומפרסיה).`, correct: false },
-      { id: "b", text: `הכנסת צינור קיבה ושטיפתה.`, correct: false },
-      { id: "c", text: `פתיחת וריד ברגל אחורית ומתן נוזלים בקצב מהיר.`, correct: true },
-      { id: "d", text: `ניתוח גסטרופקסיה לתפירת הקיבה לקיר הגוף.`, correct: false },
-    ],
-  },
-  {
-    type: "quiz-result",
-    quizId: `treatment`,
-    scenario: `צוות המרפאה נערך לקבלת מקרה GDV ומכין את ציוד ההחייאה והניתוח בהתאם לפרוטוקול הייצוב הסטנדרטי. איזה מהצעדים הבאים אינו חלק מהפרוטוקול הסטנדרטי הנכון?`,
-    options: [
-      { id: "a", text: `דיקור קיר הגוף להוצאת אוויר (דקומפרסיה).`, correct: false },
-      { id: "b", text: `הכנסת צינור קיבה ושטיפתה.`, correct: false },
-      { id: "c", text: `פתיחת וריד ברגל אחורית ומתן נוזלים בקצב מהיר.`, correct: true },
-      { id: "d", text: `ניתוח גסטרופקסיה לתפירת הקיבה לקיר הגוף.`, correct: false },
-    ],
-    feedbackCorrect: `מצוין! הקיבה הנפוחה חוסמת את החזר הדם מהחלק האחורי של הגוף. נוזלים ברגל אחורית לא יגיעו ללב – תמיד פותחים ורידים ברגליים קדמיות או בצוואר!`,
-    feedbackWrongPart1: `דקומפרסיה, צינור קיבה וגסטרופקסיה הם אכן חלקים חיוניים ומקובלים בפרוטוקול הטיפול.`,
-    feedbackWrongPart2: `התשובה הנכונה היא ג' — לחץ הקיבה הנפוחה חוסם את הווריד הנבוב התחתון, ולכן נוזלים שיינתנו ברגל אחורית לא יגיעו לזרם הדם המרכזי.`,
-  },
+  { type: "quiz-vote", quizId: `treatment` },
+  { type: "quiz-result", quizId: `treatment` },
   {
     // slide_14.png — ניסיון החדרת צינור לדקומפרסיה
     type: "image",
@@ -281,31 +213,8 @@ const SLIDES = [
       `דלקת-ריאות שאיפתית עקב ניסיונות ההקאה לפני הניתוח.`,
     ],
   },
-  {
-    type: "quiz-vote",
-    quizId: `dilemma`,
-    scenario: `צוות המרפאה החדיר צינור קיבה לכלב המאובחן עם היפוך קיבה, ניקז את הגזים והשיג ייצוב ראשוני של המדדים. איזה מבין הצעדים הבאים מבוסס על תפיסה שגויה ומסוכנת של המצב?`,
-    options: [
-      { id: "a", text: `המשך ניטור אינטנסיבי מחשש להופעת סיבוכים מאוחרים (כגון הפרעות קצב).`, correct: false },
-      { id: "b", text: `שקילת הערת הכלב ושחרורו למעקב בלבד מאחר והצינור עבר והוא התייצב.`, correct: true },
-      { id: "c", text: `התייחסות למקרה כמצב חירום קליני הדורש המשך טיפול אינטנסיבי.`, correct: false },
-      { id: "d", text: `התחשבות ברמת הסטרס והלחץ של הכלב כחלק מניהול הטיפול.`, correct: false },
-    ],
-  },
-  {
-    type: "quiz-result",
-    quizId: `dilemma`,
-    scenario: `צוות המרפאה החדיר צינור קיבה לכלב המאובחן עם היפוך קיבה, ניקז את הגזים והשיג ייצוב ראשוני של המדדים. איזה מבין הצעדים הבאים מבוסס על תפיסה שגויה ומסוכנת של המצב?`,
-    options: [
-      { id: "a", text: `המשך ניטור אינטנסיבי מחשש להופעת סיבוכים מאוחרים (כגון הפרעות קצב).`, correct: false },
-      { id: "b", text: `שקילת הערת הכלב ושחרורו למעקב בלבד מאחר והצינור עבר והוא התייצב.`, correct: true },
-      { id: "c", text: `התייחסות למקרה כמצב חירום קליני הדורש המשך טיפול אינטנסיבי.`, correct: false },
-      { id: "d", text: `התחשבות ברמת הסטרס והלחץ של הכלב כחלק מניהול הטיפול.`, correct: false },
-    ],
-    feedbackCorrect: `מדויק! השקילה להעיר את הכלב ולעקוב בלבד היא תפיסה שגויה ומסוכנת. מעבר הצינור והייצוב הראשוני אינם פותרים את הבעיה המכנית, וללא התערבות כירורגית הקיבה תסתובב שוב.`,
-    feedbackWrongPart1: `ניטור, התייחסות כחירום וניהול סטרס הם אכן שלבים נכונים וחשובים בטיפול.`,
-    feedbackWrongPart2: `התשובה הנכונה היא ב' — מעבר הצינור והייצוב הזמני אינם מתקנים את הסיבוב האנטומי של הקיבה, ושחרור ללא ניתוח יוביל בסבירות גבוהה לחזרה מיידית של היפוך הקיבה.`,
-  },
+  { type: "quiz-vote", quizId: `dilemma` },
+  { type: "quiz-result", quizId: `dilemma` },
   {
     // slide_17a.png, slide_17b.png — שקף סיום הומוריסטי
     type: "gallery",
@@ -400,7 +309,6 @@ const OPTION_LETTERS = { a: `א'`, b: `ב'`, c: `ג'`, d: `ד'` };
  * ה-state של ההצבעות מקומי לרכיב הזה בלבד, ולכן מתאפס אוטומטית בכל
  * פעם שהשקופית מוצגת מחדש (הרכיב נטען-מחדש דרך ה-key על ההורה).
  */
-const OPTION_ORDER = ["a", "b", "c", "d"];
 const ZERO_VOTES = { a: 0, b: 0, c: 0, d: 0 };
 
 /**
@@ -410,7 +318,9 @@ const ZERO_VOTES = { a: 0, b: 0, c: 0, d: 0 };
  * ה-state של הקולות מוחזק בהורה (לפי quizId) כדי שיישמר גם בניווט אחורה/קדימה.
  */
 function QuizVoteSlide({ slide, votes, questionNumber }) {
-  const total = votes.a + votes.b + votes.c + votes.d;
+  // total מחושב לפי האפשרויות שקיימות בפועל בשאלה הזו (ולא לפי 4 קבוע),
+  // כדי שגם שאלה עם פחות מ-4 אפשרויות (למשל dilemma עם 3) תספור נכון.
+  const total = slide.options.reduce((sum, opt) => sum + (votes[opt.id] || 0), 0);
 
   return (
     <div className="gdv-quiz">
@@ -449,9 +359,14 @@ function QuizVoteSlide({ slide, votes, questionNumber }) {
  * של השאלה והאפשרויות בתחתית.
  */
 function QuizResultSlide({ slide, votes, questionNumber }) {
-  const total = votes.a + votes.b + votes.c + votes.d;
+  // total/majority מחושבים לפי האפשרויות שקיימות בפועל בשאלה הזו, כדי
+  // שגם שאלה עם פחות מ-4 אפשרויות (למשל dilemma עם 3) תתנהג נכון.
+  const optionIds = slide.options.map((opt) => opt.id);
+  const total = optionIds.reduce((sum, id) => sum + (votes[id] || 0), 0);
   const majorityId =
-    total > 0 ? OPTION_ORDER.reduce((best, id) => (votes[id] > votes[best] ? id : best), "a") : null;
+    total > 0
+      ? optionIds.reduce((best, id) => (votes[id] > votes[best] ? id : best), optionIds[0])
+      : null;
   const majorityOpt = majorityId ? slide.options.find((o) => o.id === majorityId) : null;
   const majorityPct = total > 0 ? Math.round((votes[majorityId] / total) * 100) : 0;
   const majorityCorrect = majorityOpt ? majorityOpt.correct : null;
@@ -663,7 +578,7 @@ function SlideContent({ slide, quizVotes }) {
     case "quiz-vote":
       return (
         <QuizVoteSlide
-          slide={slide}
+          slide={QUESTIONS[slide.quizId]}
           votes={quizVotes[slide.quizId] || ZERO_VOTES}
           questionNumber={QUIZ_ID_TO_NUMBER[slide.quizId]}
         />
@@ -672,7 +587,7 @@ function SlideContent({ slide, quizVotes }) {
     case "quiz-result":
       return (
         <QuizResultSlide
-          slide={slide}
+          slide={QUESTIONS[slide.quizId]}
           votes={quizVotes[slide.quizId] || ZERO_VOTES}
           questionNumber={QUIZ_ID_TO_NUMBER[slide.quizId]}
         />
