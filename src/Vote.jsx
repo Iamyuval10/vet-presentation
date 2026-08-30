@@ -244,6 +244,18 @@ export default function Vote({ devMode = true }) {
   // "צעד קדימה" חלקה גם כשהמעבר מגיע מ-polling ברקע.
   const screenKey = `${screen}-${questionId ?? "none"}`;
 
+  // history.scrollRestoration = "manual" (פעם אחת בעליית הרכיב): מונע
+  // מהדפדפן "לזכור" ולשחזר מיקום גלילה קודם עבור הכתובת הזו. זה בדיוק
+  // התרחיש שקורה בסריקת QR — בטלפון מסוימים, במיוחד אם הכרטיסייה/וובוויו
+  // כבר ביקרה בכתובת הזו קודם (למשל מהצגה קודמת), ברירת המחדל ("auto")
+  // משחזרת אוטומטית את הגלילה האחרונה שנשמרה לאותה כתובת, אחרי שה-DOM
+  // כבר נטען — כלומר גם *אחרי* שה-scrollTo הראשוני שלנו כבר רץ.
+  useEffect(() => {
+    if (typeof window !== "undefined" && "scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
+
   // גלילה לראש הדף בכל פתיחה ראשונית של האפליקציה וגם בכל מעבר
   // מסך/שאלה (screenKey משתנה) — כדי שהמשתמש תמיד יראה את תחילת המסך
   // החדש, גם אם הוא היה גלול למטה במסך הקודם. useLayoutEffect (ולא
@@ -252,11 +264,20 @@ export default function Vote({ devMode = true }) {
   // מונע קפיצה "חלקה" (smooth) שעלולה להשאיר את המסך גלול חלקית באמצע
   // המעבר; body.scrollTop/documentElement.scrollTop נכתבים בנוסף
   // ל-window.scrollTo כי דפדפנים ניידים שונים (בעיקר Safari/iOS ישן)
-  // משתמשים באלמנט גלילה שונה כ"מקור אמת" בפועל.
+  // משתמשים באלמנט גלילה שונה כ"מקור אמת" בפועל. מעבר לזה, מתוזמן איפוס
+  // נוסף בתוך requestAnimationFrame: אחרי סריקת QR, חלק מהדפדפנים
+  // הניידים מבצעים שחזור גלילה אוטומטי (scroll restoration) *אחרי*
+  // ציור הפריים הראשון — סינכרוני בלבד לא תמיד מספיק כדי לנצח אותו.
   useLayoutEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    document.body.scrollTop = 0;
-    document.documentElement.scrollTop = 0;
+    function resetScroll() {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+    }
+
+    resetScroll();
+    const rafId = requestAnimationFrame(resetScroll);
+    return () => cancelAnimationFrame(rafId);
   }, [screenKey]);
 
   return (
@@ -278,8 +299,10 @@ export default function Vote({ devMode = true }) {
         /* !important כדי לוודא שגלילה תמיד "קופצת" מיידית (ולא
            "smooth") גם אם דף חיצוני/הרחבת דפדפן הגדירו התנהגות אחרת —
            גלילה חלקה יכולה להשאיר את המסך גלול-חלקית לרגע בדיוק בזמן
-           מעבר בין שקופיות/שאלות. */
-        html {
+           מעבר בין שקופיות/שאלות. מוחל על html וגם על body כי בחלק
+           מדפדפני המובייל (בעיקר Safari/iOS) אלמנט הגלילה בפועל הוא
+           body ולא html, למרות שלפי הספסיפיקציה זה אמור להיות html. */
+        html, body {
           scroll-behavior: auto !important;
         }
         @keyframes gdvVoteFadeIn {
