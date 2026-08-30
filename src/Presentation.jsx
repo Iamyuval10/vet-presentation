@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { Maximize, Minimize } from "lucide-react";
 import {
   subscribeToPath,
   putPath,
@@ -751,34 +752,66 @@ export default function Presentation() {
   const isInteractiveTarget = (el) =>
     !!el.closest && !!el.closest("a, button, video, input, textarea, [contenteditable='true']");
 
-  // ניווט מקלדת — רווח/חץ-למעלה/חץ-למטה תמיד מעבירים קדימה (חוץ מאשר בזמן
-  // שהפוקוס נמצא על רכיב אינטראקטיבי, כדי לא לחטוף למשל את מקש הרווח
-  // מנגן הוידאו). חצי שמאל/ימין מדמים את לוגיקת לחיצת העכבר (ראו
-  // handleScreenClick למעלה): חץ שמאלה -> קדימה, חץ ימינה -> אחורה.
-  // גבולות הניווט (לא לפני שקף 0 / אחרי השקף האחרון) נאכפים כבר בתוך
-  // goNext/goPrev עצמם (Math.min/Math.max).
+  // מסך מלא: toggle יחיד המשמש גם את כפתור האייקון בפינת המסך וגם את
+  // מקש F5 (ראו handleKeyDown למטה). document.fullscreenElement הוא
+  // מקור האמת ל"האם אנחנו כרגע במסך מלא" — מתעדכן גם אם היציאה
+  // ממסך-מלא קרתה בדרך אחרת (Esc, לחצן דפדפן וכו', ראו אפקט
+  // ה-fullscreenchange למטה).
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.warn("requestFullscreen failed:", err);
+      });
+    } else {
+      document.exitFullscreen().catch((err) => {
+        console.warn("exitFullscreen failed:", err);
+      });
+    }
+  }, []);
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  // ניווט מקלדת — תומך גם בשלטי הצגה חומרתיים (כמו Logitech R800),
+  // ששולחים בפועל PageUp/PageDown/חיצים/רווח. המיפוי הוא הסטנדרטי
+  // המקובל בתוכנות מצגות (לא הפוך ל-RTL): PageDown/חץ-למטה/חץ-ימינה/
+  // רווח -> קדימה, PageUp/חץ-למעלה/חץ-שמאלה -> אחורה. preventDefault
+  // על כל המקשים האלה קריטי — בלעדיו הדפדפן עצמו יגלול את העמוד
+  // (PageUp/PageDown/חיצים/רווח כולם גורמים ל-scroll כברירת מחדל).
+  // F5 מפעיל/מכבה מסך מלא במקום לרענן את הדף. גבולות הניווט (לא לפני
+  // שקף 0 / אחרי השקף האחרון) נאכפים כבר בתוך goNext/goPrev עצמם
+  // (Math.min/Math.max).
+  useEffect(() => {
+    const NEXT_KEYS = ["PageDown", "ArrowDown", "ArrowRight", " ", "Spacebar"];
+    const PREV_KEYS = ["PageUp", "ArrowUp", "ArrowLeft"];
+
     function handleKeyDown(e) {
       if (isInteractiveTarget(e.target)) return;
-      if (e.key === "ArrowLeft") {
+
+      if (e.key === "F5") {
+        e.preventDefault();
+        toggleFullscreen();
+        return;
+      }
+      if (NEXT_KEYS.includes(e.key)) {
         e.preventDefault();
         goNext();
         return;
       }
-      if (e.key === "ArrowRight") {
+      if (PREV_KEYS.includes(e.key)) {
         e.preventDefault();
         goPrev();
-        return;
-      }
-      const forwardKeys = [" ", "Spacebar", "ArrowUp", "ArrowDown"];
-      if (forwardKeys.includes(e.key)) {
-        e.preventDefault();
-        goNext();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [goNext, goPrev]);
+  }, [goNext, goPrev, toggleFullscreen]);
 
   // ניווט עכבר — לחיצה בצד שמאל הפיזי של המסך = קדימה, בצד ימין = אחורה.
   // clientX נמדד תמיד משמאל למסך (ללא תלות בכיווניות RTL/LTR), ולכן
@@ -802,6 +835,15 @@ export default function Presentation() {
 
   return (
     <div className="gdv-viewport" ref={viewportRef}>
+      <button
+        type="button"
+        className="gdv-fullscreen-btn"
+        onClick={toggleFullscreen}
+        aria-label={isFullscreen ? "צא ממסך מלא" : "עבור למסך מלא"}
+        title={isFullscreen ? "צא ממסך מלא (F5)" : "מסך מלא (F5)"}
+      >
+        {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+      </button>
       <div
         className="gdv-root"
         dir="rtl"
@@ -825,6 +867,33 @@ export default function Presentation() {
           align-items: center;
           justify-content: center;
           overflow: hidden;
+        }
+
+        /* position: fixed (לא absolute) -> נשאר צמוד לפינת המסך תמיד,
+           בלי תלות במיקום/גודל של gdv-root (שהוא ה-canvas המוקטן/מוגדל
+           לפי scale, וממורכז בתוך gdv-viewport). */
+        .gdv-fullscreen-btn {
+          position: fixed;
+          top: 16px;
+          left: 16px;
+          z-index: 20;
+          width: 36px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(7, 8, 4, 0.55);
+          border: 1px solid rgba(212, 176, 85, 0.35);
+          border-radius: 6px;
+          color: #d4b055;
+          cursor: pointer;
+          opacity: 0.55;
+          transition: opacity 0.15s ease, background 0.15s ease;
+        }
+        .gdv-fullscreen-btn:hover,
+        .gdv-fullscreen-btn:focus-visible {
+          opacity: 1;
+          background: rgba(7, 8, 4, 0.8);
         }
 
         .gdv-root {
