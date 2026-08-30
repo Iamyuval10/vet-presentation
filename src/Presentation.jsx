@@ -836,19 +836,26 @@ export default function Presentation() {
   const isInteractiveTarget = (el) =>
     !!el.closest && !!el.closest("a, button, video, input, textarea, [contenteditable='true']");
 
-  // ניווט מקלדת — רווח וכל חץ תמיד מעבירים קדימה (חוץ מאשר בזמן שהפוקוס
-  // נמצא על רכיב אינטראקטיבי, כדי לא לחטוף למשל את מקש הרווח מנגן הוידאו)
+  // ניווט מקלדת — רווח/חץ-למעלה/חץ-למטה תמיד מעבירים קדימה (חוץ מאשר בזמן
+  // שהפוקוס נמצא על רכיב אינטראקטיבי, כדי לא לחטוף למשל את מקש הרווח
+  // מנגן הוידאו). חצי שמאל/ימין מדמים את לוגיקת לחיצת העכבר (ראו
+  // handleScreenClick למעלה): חץ שמאלה -> קדימה, חץ ימינה -> אחורה.
+  // גבולות הניווט (לא לפני שקף 0 / אחרי השקף האחרון) נאכפים כבר בתוך
+  // goNext/goPrev עצמם (Math.min/Math.max).
   useEffect(() => {
     function handleKeyDown(e) {
       if (isInteractiveTarget(e.target)) return;
-      const forwardKeys = [
-        " ",
-        "Spacebar",
-        "ArrowRight",
-        "ArrowLeft",
-        "ArrowUp",
-        "ArrowDown",
-      ];
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goNext();
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goPrev();
+        return;
+      }
+      const forwardKeys = [" ", "Spacebar", "ArrowUp", "ArrowDown"];
       if (forwardKeys.includes(e.key)) {
         e.preventDefault();
         goNext();
@@ -856,7 +863,7 @@ export default function Presentation() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [goNext]);
+  }, [goNext, goPrev]);
 
   // ניווט עכבר — לחיצה בצד שמאל הפיזי של המסך = קדימה, בצד ימין = אחורה.
   // clientX נמדד תמיד משמאל למסך (ללא תלות בכיווניות RTL/LTR), ולכן
