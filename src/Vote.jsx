@@ -331,7 +331,7 @@ export default function Vote({ devMode = true }) {
   // "צעד קדימה" חלקה גם כשהמעבר מגיע מ-polling ברקע.
   const screenKey = `${screen}-${questionId ?? "none"}`;
 
-  // בלי שום נעילת overflow/position על html/body (ראו בלוק ה-style
+  // בלי שום נעילת overflow/position על html/body עצמם (ראו בלוק ה-style
   // למטה) — נעילה כזו התבררה כמסוכנת יותר מהבעיה שהיא נועדה לפתור: אם
   // הדפדפן כבר טען את הדף כשהוא גלול-חלקית (למשל בגלל פוקוס אוטומטי או
   // אנימציית ה-URL bar ב-iOS Safari) ואז מיד "ננעל" ב-overflow: hidden,
@@ -339,8 +339,13 @@ export default function Vote({ devMode = true }) {
   // הנכון הוא ההפך: לאפשר גלילה רגילה של הדף (html/body: overflow-y:
   // auto), ובמקביל לאלץ באופן אקטיבי איפוס-גלילה ל-(0,0) ב-useLayoutEffect
   // — פעם אחת בעליית הרכיב, ופעם נוספת בכל מעבר מסך/שאלה (screenKey
-  // משתנה). useLayoutEffect (ולא useEffect) רץ סינכרונית לפני הציור,
-  // כדי שלא יהיה רגע נראה-לעין של offset שגוי.
+  // משתנה) ובכל סגירה של מודל ה-onboarding. useLayoutEffect (ולא
+  // useEffect) רץ סינכרונית לפני הציור, כדי שלא יהיה רגע נראה-לעין של
+  // offset שגוי. חשוב להבחין: #root/.app-container (styles.screen, ראו
+  // למטה) כן נעול בגובה 100dvh + overflow: hidden — אבל זה אלמנט div
+  // רגיל בתוך הדף, לא html/body עצמם, ולכן לא חשוף לאותה סכנה (לא
+  // מתערב בהתנהגות ה-URL bar של הדפדפן). הנעילה עליו היא זו שמאפשרת
+  // ל-useFitScale למטה להבטיח מבנית שהתוכן תמיד נכנס במסך אחד.
   useLayoutEffect(() => {
     const resetScroll = () => {
       window.scrollTo(0, 0);
@@ -382,8 +387,8 @@ export default function Vote({ devMode = true }) {
         }
         #root, .app-container {
           height: 100dvh;
-          overflow-y: auto;
-          -webkit-overflow-scrolling: touch;
+          max-height: 100dvh;
+          overflow: hidden;
           display: flex;
           flex-direction: column;
           justify-content: flex-start;
@@ -567,7 +572,7 @@ function OnboardingModal({ onSubmit }) {
 // על אלמנט השורש, שכל הגדלים המוצמדים לו — טקסט/ריפוד/מרווחים —
 // מוכפלים בו דרך calc()) — כך שהתוכן תמיד נכנס במלואו במסך אחד בלי
 // לגלוש ובלי צורך ב-scroll, ובלי לקטין דבר כשאין בכך צורך.
-const MIN_FIT_SCALE = 0.72;
+const MIN_FIT_SCALE = 0.55;
 
 function useFitScale(deps) {
   const ref = useRef(null);
@@ -867,26 +872,26 @@ function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
 }
 
 const styles = {
-  // height: 100dvh + overflow-y: auto -> הקונטיינר הראשי (.app-container,
-  // ראו className על אלמנט השורש למטה, ובלוק ה-style למעלה) תופס בדיוק
-  // גובה מסך אחד. זה *לא* אותו דבר כמו הנעילה המסוכנת של html/body
-  // (overflow: hidden) שנמנעה בכוונה למעלה (ראו ההערה על useLayoutEffect
-  // של איפוס-גלילה) — .app-container הוא div רגיל, לא body עצמו, ולכן
-  // לא מפריע להתנהגות ה-URL bar הטבעית של הדפדפן ואינו יכול "לנעול"
-  // משתמש במצב גלול-חלקית. הגובה הקשיח כאן חשוב במיוחד כדי ש-useFitScale
-  // (ראו activeWrap/votedWrap למטה) יוכל בכלל למדוד "כמה שטח יש" ולכווץ
-  // תוכן שלא נכנס — בלי גובה קשיח כלשהו בשרשרת ה-flex, clientHeight תמיד
-  // שווה ל-scrollHeight וההתאמה האוטומטית לא עושה כלום. overflow-y: auto
-  // (לא hidden) הוא רשת ביטחון: אם התוכן עדיין ארוך מדי גם אחרי הכיווץ
-  // המקסימלי (MIN_FIT_SCALE), אפשר לגלול בתוך .app-container עצמו במקום
-  // שהתוכן ייחתך בשקט. justifyContent: "flex-start" + alignItems:
-  // "stretch" מבטיחים שהתוכן תמיד מתחיל מהפינה העליונה-ימנית. הסגנון
-  // הזה (inline) חופף במתכוון לכללי ה-CSS class למעלה — inline תמיד
-  // גובר, אז שני המקורות חייבים להישאר מסונכרנים.
+  // height + maxHeight: 100dvh + overflow: hidden -> הקונטיינר הראשי
+  // (.app-container, ראו className על אלמנט השורש למטה, ובלוק ה-style
+  // למעלה) תופס *בדיוק* גובה מסך אחד ולעולם לא גולל בעצמו. זה *לא* אותו
+  // דבר כמו הנעילה המסוכנת שנמנעה בכוונה על html/body (ראו ההערה על
+  // useLayoutEffect של איפוס-גלילה) — .app-container הוא div רגיל, לא
+  // body עצמו, ולכן לא מפריע להתנהגות ה-URL bar הטבעית של הדפדפן. הגובה
+  // הקשיח כאן הוא מה שמאפשר לכל שרשרת ה-flex מתחתיו (animWrap ->
+  // activeWrap/votedWrap -> optionsWrap -> optionButton, כל אחד עם
+  // flex: 1 + minHeight: 0) להתכווץ באמת: ה-flexbox עצמו מבטיח מבנית
+  // (ולא רק מודד/מנחש ב-JS) שסכום הגבהים של הכותרת + 4 הכרטיסים לעולם
+  // לא יעבור את גובה המכולה — אין שום צורך ב-overflow-y: auto כרשת
+  // ביטחון, כי גלישה כזו הופכת בלתי-אפשרית מבנית. justifyContent:
+  // "flex-start" + alignItems: "stretch" מבטיחים שהתוכן תמיד מתחיל
+  // מהפינה העליונה-ימנית. הסגנון הזה (inline) חופף במתכוון לכללי ה-CSS
+  // class למעלה — inline תמיד גובר, אז שני המקורות חייבים להישאר
+  // מסונכרנים.
   screen: {
     height: "100dvh",
-    overflowY: "auto",
-    WebkitOverflowScrolling: "touch",
+    maxHeight: "100dvh",
+    overflow: "hidden",
     width: "100%",
     backgroundColor: COLORS.bg,
     color: COLORS.textPrimary,
@@ -962,8 +967,7 @@ const styles = {
     width: "100%",
     flex: 1,
     minHeight: 0,
-    overflowY: "auto",
-    WebkitOverflowScrolling: "touch",
+    overflow: "hidden",
     display: "flex",
     flexDirection: "column",
     padding: "0 0 calc(0.5rem * var(--vote-scale, 1))",
@@ -980,38 +984,38 @@ const styles = {
     color: COLORS.accent,
     letterSpacing: 0.3,
   },
-  // justifyContent: flex-start -> הכרטיסים מתחילים מלמעלה ותופסים כל
-  // אחד את הגובה הטבעי שהתוכן שלו דורש; אם התוכן ארוך מדי (למשל שאלה
-  // עם טקסט ארוך על מסך קטן), useFitScale עדיין מכווץ קנה-מידה אחיד
-  // (--vote-scale) כדי לצמצם למינימום את הסיכוי לגלילה, ואם זה עדיין
-  // לא מספיק — animWrap (ראו למעלה) גולל פנימית במקום לחתוך תוכן.
-  // gap: 0.5rem (יחסי, לא px קבוע) -> מרווח מצומצם בין כרטיסי תשובה.
+  // בכוונה בלי flex-grow על optionsWrap/optionButton עצמם: כל כרטיס
+  // מקבל בדיוק את הגובה הטבעי שהתוכן שלו דורש (בקנה-המידה הנוכחי).
+  // אם הכרטיסים היו flex: 1 (חלוקה שווה בכפייה + overflow:hidden על כל
+  // כרטיס בנפרד), טקסט ארוך בכרטיס אחד היה נחתך *בשקט בתוך אותו כרטיס*
+  // עוד לפני שה-JS (useFitScale, ראו activeWrap למעלה) מספיק לגלות שיש
+  // בעיה — כי הגלישה נבלמת מקומית ולא "מגיעה" לגובה שנמדד ב-scrollHeight
+  // של activeWrap. בגישה הנוכחית: הכרטיסים תופסים גובה טבעי (יכול להיות
+  // שונה זה מזה), וה-overflow:hidden היחיד בשרשרת נמצא רק ב-activeWrap
+  // עצמו (הגבול החיצוני) — כך שאם הסכום חורג מהגובה הזמין, זה בדיוק מה
+  // ש-useFitScale מודד ומגיב אליו ע"י כיווץ --vote-scale, *לפני* שמגיעים
+  // בכלל למצב של גלישה/חיתוך.
   optionsWrap: {
     width: "100%",
     display: "flex",
     flexDirection: "column",
-    gap: "calc(0.5rem * var(--vote-scale, 1))",
-    justifyContent: "flex-start",
+    gap: "calc(0.4rem * var(--vote-scale, 1))",
   },
-  // ללא flex-grow (אין עוד flex: "1 1 0") — כל כרטיס תשובה מקבל בדיוק
-  // את הגובה הטבעי שהתוכן שלו דורש (בקנה-המידה הנוכחי), ולא נמתח כדי
-  // "למלא" את השטח הפנוי, כדי שהטקסט לא ייראה מתוח/מנופח. padding:
-  // 0.75rem אחיד (יחסי) בכל הכיוונים, כדי לצמצם את הגובה הכולל של כל
-  // כרטיס ולתת יותר סיכוי ל-4 האפשרויות להיכנס במסך בלי גלילה.
   optionButton: {
     display: "flex",
     alignItems: "center",
     gap: "calc(0.625rem * var(--vote-scale, 1))",
     width: "100%",
     flexShrink: 0,
-    padding: "calc(0.75rem * var(--vote-scale, 1))",
+    padding:
+      "calc(0.4rem * var(--vote-scale, 1)) calc(0.75rem * var(--vote-scale, 1))",
     backgroundColor: "#141510",
     border: "2px solid #2a2c22",
     borderRadius: 16,
     color: COLORS.textPrimary,
-    fontSize: "calc(clamp(0.85rem, 3.4vw, 1rem) * var(--vote-scale, 1))",
+    fontSize: "calc(clamp(0.8rem, 3.4vw, 1rem) * var(--vote-scale, 1))",
     fontWeight: 500,
-    lineHeight: 1.35,
+    lineHeight: 1.3,
     textAlign: "right",
     cursor: "pointer",
     boxSizing: "border-box",
@@ -1052,8 +1056,7 @@ const styles = {
     flexDirection: "column",
     flex: 1,
     minHeight: 0,
-    overflowY: "auto",
-    WebkitOverflowScrolling: "touch",
+    overflow: "hidden",
     padding: "0 0 calc(0.5rem * var(--vote-scale, 1))",
     boxSizing: "border-box",
     alignItems: "center",
