@@ -331,56 +331,50 @@ export default function Vote({ devMode = true }) {
   // "צעד קדימה" חלקה גם כשהמעבר מגיע מ-polling ברקע.
   const screenKey = `${screen}-${questionId ?? "none"}`;
 
-  // נעילת גלילה מוחלטת + תיקון "קפיצת" המיקום הראשוני ב-iOS Safari
-  // (בעיקר בפתיחה מסריקת QR): html/body נעולים לגמרי (position: fixed,
-  // overflow: hidden — ראו html/body בבלוק ה-style למטה) כדי שהדף עצמו
-  // פיזית לא מסוגל להיגלל; היכולת לגלול נשמרת אך ורק בתוך הקונטיינר
-  // הפנימי (animWrap, ראו styles.animWrap: overflow-y: auto). מעבר
-  // לנעילה המבנית הזו, שתי קריאות איפוס-גלילה נוספות (מיידית + אחרי
-  // 100ms) מכסות את המקרה שבו סרגל הכתובת של הדפדפן/פוקוס אוטומטי
-  // עדיין "מזיז" את התצוגה רגע אחרי הטעינה הראשונית.
-  useEffect(() => {
-    const resetScroll = () => {
-      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    };
-    resetScroll();
-    const timer = setTimeout(resetScroll, 100);
-    return () => clearTimeout(timer);
-  }, []);
+  // בלי שום נעילת overflow/position על html/body (ראו בלוק ה-style
+  // למטה) — נעילה כזו התבררה כמסוכנת יותר מהבעיה שהיא נועדה לפתור: אם
+  // הדפדפן כבר טען את הדף כשהוא גלול-חלקית (למשל בגלל פוקוס אוטומטי או
+  // אנימציית ה-URL bar ב-iOS Safari) ואז מיד "ננעל" ב-overflow: hidden,
+  // המשתמש נתקע במצב הגלול הזה בלי שום דרך לגלול בחזרה למעלה. הפתרון
+  // הנכון הוא ההפך: לאפשר גלילה רגילה של הדף (html/body: overflow-y:
+  // auto), ובמקביל לאלץ באופן אקטיבי איפוס-גלילה ל-(0,0) ב-useLayoutEffect
+  // — פעם אחת בעליית הרכיב, ופעם נוספת בכל מעבר מסך/שאלה (screenKey
+  // משתנה). useLayoutEffect (ולא useEffect) רץ סינכרונית לפני הציור,
+  // כדי שלא יהיה רגע נראה-לעין של offset שגוי.
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [screenKey]);
 
   return (
     <div className="app-container" style={styles.screen} dir="rtl">
       <style>{`
-        /* html/body: overflow: hidden + height: 100dvh בלבד (בכוונה
-           בלי position: fixed/top/left) — position: fixed על html/body
-           התבררה כגורמת בפועל לתוכן להיפתח "קפוא" מעל השוליים העליונים
-           הנראים (מוצג כאילו הכותרת/השאלה נחתכות למעלה), כי אלמנט fixed
-           ממוקם ביחס ל-layout viewport שלא תמיד תואם את ה-visual
-           viewport האמיתי ב-iOS לפני שסרגל הכתובת מתייצב. overflow:
-           hidden + height: 100dvh מספיקים כדי שהדף עצמו לא יגלול —
-           #root/.app-container ממלאים את כל השטח ומיושרים למעלה
-           (justify-content: flex-start, לא center/space-between), כדי
-           שהכותרת והשאלה תמיד יתחילו בדיוק מהפינה העליונה. הגלילה
-           בפועל, אם צריך, קורית רק בתוך הקונטיינר הפנימי (ראו
-           styles.animWrap: overflow-y: auto). background-color זהה
-           לרקע המצגת (COLORS.bg) כדי שלא יופיע רקע לבן בשום מצב. */
+        /* בכוונה בלי overflow: hidden, position: fixed, או height קשיח
+           (100dvh) על html/body: כל אחת מהנעילות האלה יכולה "לקפוא"
+           את הדף במצב גלול-חלקית אם הוא כבר היה במצב כזה ברגע שהיא
+           הוחלה (למשל אחרי פוקוס אוטומטי/אנימציית URL bar ב-iOS
+           Safari) — ואז אין למשתמש שום דרך לגלול בחזרה למעלה. במקום
+           זאת: גלילה רגילה של הדף (min-height: 100%, overflow-y: auto),
+           ואיפוס-גלילה אקטיבי דרך JS בכל טעינה/מעבר שאלה (ראו
+           useLayoutEffect למעלה) — כך שהתוכן תמיד *מתחיל* מלמעלה, אבל
+           אף פעם לא "נעול" שם אם המשתמש בכל זאת רוצה/צריך לגלול.
+           background-color זהה לרקע המצגת (COLORS.bg) כדי שלא יופיע
+           רקע לבן בשום מצב. */
         html, body {
           margin: 0;
           padding: 0;
-          height: 100dvh;
-          overflow: hidden;
+          min-height: 100%;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
           background-color: ${COLORS.bg};
         }
         #root, .app-container {
-          height: 100dvh;
-          max-height: 100dvh;
+          min-height: 100dvh;
           display: flex;
           flex-direction: column;
           justify-content: flex-start;
           align-items: stretch;
-          overflow: hidden;
         }
         @keyframes gdvVoteFadeIn {
           from { opacity: 0; transform: translateY(8px); }
@@ -413,10 +407,11 @@ export default function Vote({ devMode = true }) {
 
       {devMode && (
         <>
-          {/* מרווח קבוע (56px, flexShrink: 0) ששומר מקום בתוך העמודה
-              הנעולה (screen: height 100vh) כדי שסרגל הבדיקה (fixed
-              בתחתית המסך האמיתי) לא יכסה את סוף animWrap — בלעדיו
-              הגלילה הפנימית של animWrap הייתה נעצרת ממש מתחת לסרגל. */}
+          {/* מרווח בזרימה הרגילה (לא fixed) ששומר מקום כדי שסרגל הבדיקה
+              (fixed בתחתית המסך האמיתי) לא יכסה חזותית את סוף התוכן —
+              screen זורם באופן טבעי (min-height, לא locked), אז אם
+              התוכן ארוך מהמסך הדף גולל, וה-spacer הזה חייב להיות חלק
+              מהזרימה כדי שהגלילה תיקח אותו בחשבון. */}
           <div style={{ height: 56, flexShrink: 0 }} aria-hidden="true" />
           <DevControls
             status={devStatus}
@@ -870,11 +865,16 @@ const styles = {
   // לחלוטין וזה אך ורק האזור הפנימי שיכול לזוז. הסגנון הזה (inline)
   // חופף במתכוון לכללי ה-CSS class למעלה — inline תמיד גובר, אז שני
   // המקורות חייבים להישאר מסונכרנים.
+  // min-height (לא height/maxHeight קשיח, ובלי overflow: hidden) ->
+  // הקונטיינר תמיד תופס לפחות מסך אחד, אבל גדל בזרימה טבעית אם התוכן
+  // דורש יותר — ואז html/body (שגם הם overflow-y: auto, ראו למעלה)
+  // גוללים כרגיל. justifyContent: "flex-start" + alignItems: "stretch"
+  // (לא center/space-between) מבטיחים שהתוכן תמיד מתחיל מהפינה
+  // העליונה-ימנית. אין כאן שום negative margin/transform שעלולים
+  // להזיז את התוכן מעל לשוליים הנראים.
   screen: {
-    height: "100dvh",
-    maxHeight: "100dvh",
+    minHeight: "100dvh",
     width: "100%",
-    overflow: "hidden",
     backgroundColor: COLORS.bg,
     color: COLORS.textPrimary,
     fontFamily:
@@ -888,21 +888,15 @@ const styles = {
     margin: 0,
     position: "relative",
   },
-  // flex: 1 + height: 100% + overflow-y: auto -> זהו הקונטיינר המיידי
-  // סביב השאלה/תשובות (האזור היחיד שמורשה לגלול, ראו ההערה על screen
-  // למעלה) — כשתוכן שאלה ארוך מדי כדי להיכנס בשטח שנשאר מתחת לפס
-  // הברכה, הוא גולל מקומית מ-(0,0) ועד הכרטיס האחרון, בלי שהעמוד כולו
-  // זז. height: "100%" נשאר "לא-פעיל" בפועל (flex: 1 עם flex-basis: 0%
-  // הוא זה שקובע בפועל את הגובה בציר column), אבל נשמר כאן במפורש כדי
-  // שהתלות בגובה הזמין תהיה חד-משמעית.
+  // flex: 1 (בלי minHeight: 0/overflow-y: auto) -> כשהתוכן קצר (למשל
+  // מסך "ממתין"), האזור הזה עדיין נמתח למלא את שארית ה-min-height של
+  // screen (כדי ש-centerWrap יוכל למרכז אנכית); כשהתוכן ארוך, אין כאן
+  // שום overflow שחותך אותו — הוא פשוט דוחף את screen (ואת כל הדף)
+  // לגבוה יותר מ-100dvh, וה-html/body הגוללים למעלה מטפלים בזה.
   animWrap: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
-    minHeight: 0,
-    height: "100%",
-    overflowY: "auto",
-    WebkitOverflowScrolling: "touch",
     margin: 0,
     position: "relative",
   },
