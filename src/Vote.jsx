@@ -130,12 +130,81 @@ function saveStoredSession(record) {
   }
 }
 
+// זיהוי משתמש קבוע (onboarding): שני מפתחות נפרדים (לא אובייקט אחד),
+// לפי הדרישה המפורשת — "ראשי תיבות" ו"שם הכלב", נשמרים לצמיתות
+// ב-localStorage (בניגוד ל-sessionRecord למעלה, זה לא מתאפס בין
+// sessions/רענונים של המרצה — זו זהות של האדם המשתמש בטלפון הזה, לא
+// חלק ממצב ההצבעה של הרצאה ספציפית).
+const USER_INITIALS_KEY = "userInitials";
+const DOG_NAME_KEY = "dogName";
+
+function loadOnboardingProfile() {
+  if (typeof window === "undefined") return null;
+  try {
+    const userInitials = window.localStorage.getItem(USER_INITIALS_KEY);
+    const dogName = window.localStorage.getItem(DOG_NAME_KEY);
+    if (userInitials && dogName) return { userInitials, dogName };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveOnboardingProfile(userInitials, dogName) {
+  try {
+    window.localStorage.setItem(USER_INITIALS_KEY, userInitials);
+    window.localStorage.setItem(DOG_NAME_KEY, dogName);
+  } catch {
+    // localStorage לא זמין — לא קריטי, ה-state בזיכרון עדיין תקף לסשן הנוכחי
+  }
+}
+
+// כתובת ה-Apps Script Web App (או שירות webhook תואם) שאמורה לקבל POST
+// ולרשום כל הצבעה כשורה בגיליון Google Sheets. עדיין לא הוגדרה בפועל —
+// יש להחליף במחרוזת הכתובת האמיתית לאחר פריסת ה-Apps Script (Deploy >
+// Web App, גישה "Anyone"). כל עוד הערך ריק, השליחה מדולגת בשקט (רק
+// אזהרה ב-console), כדי לא לשבור את זרימת ההצבעה בפרודקשן.
+const GOOGLE_SHEETS_WEBHOOK_URL = "";
+
+/**
+ * שליחת אירוע הצבעה בודד ל-webhook של Google Sheets — fire-and-forget
+ * (לא ממתינים לתשובה ולא חוסמים את זרימת ההצבעה אם היא נכשלת/איטית).
+ * payload כולל userInitials/dogName (מה-onboarding) יחד עם פרטי
+ * ההצבעה עצמה, כדי שכל שורה בגיליון תזהה מי הצביע מה.
+ */
+function sendVoteToGoogleSheets(payload) {
+  if (!GOOGLE_SHEETS_WEBHOOK_URL) {
+    console.warn(
+      "[Vote] GOOGLE_SHEETS_WEBHOOK_URL is not configured yet — skipping Sheets log:",
+      payload
+    );
+    return;
+  }
+  fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch((err) => console.warn("[Vote] Google Sheets webhook failed:", err));
+}
+
 export default function Vote({ devMode = true }) {
   // מזהה המכשיר הזה — קבוע לצמיתות, לא תלוי ב-session (נוצר פעם אחת
   // ולעולם לא מתאפס). נשמר כרגע רק ב-localStorage; לא נדרש להצבעה
   // עצמה (שהיא מונה פשוט ב-Firebase), אך מבטיח לכל טלפון זהות יציבה
   // לאורך כל השימושים באפליקציה.
   const [voterId] = useState(getOrCreateVoterId);
+
+  // פרופיל ה-onboarding: { userInitials, dogName } או null אם עדיין לא
+  // מולא (או שנמחק). כל עוד הוא null, הרכיב חוסם את המסך הראשי במודל
+  // onboarding לא-ניתן-לסגירה (ראו return למטה) — ברגע שממלאים אותו
+  // (או שכבר נמצא ב-localStorage מ-session קודם), הוא נשאר קבוע לאורך
+  // כל חיי הרכיב.
+  const [profile, setProfile] = useState(loadOnboardingProfile);
+
+  const handleOnboardingSubmit = (userInitials, dogName) => {
+    saveOnboardingProfile(userInitials, dogName);
+    setProfile({ userInitials, dogName });
+  };
 
   // רשומת ה-session המקומית: { sessionId, answers: {[questionNumber]: optionKey} }.
   // נטענת מ-localStorage באתחול כדי לשרוד רענון/סגירה-ופתיחה-מחדש של
@@ -217,10 +286,28 @@ export default function Vote({ devMode = true }) {
     if (devMode) return;
 
     // שליחת הצבעה: incrementVote עושה GET ואז PATCH דרך fetch רגיל
-    // (ראו הערה על מגבלות ה-REST API הפשוט בקובץ firebaseRest.js).
-    incrementVote(questionId, key).catch((err) =>
+    // (ראו הערה על מגבלות ה-REST API הפשוט בקובץ firebaseRest.js),
+    // ובנוסף כותב רשומת אירוע מלאה (כולל userInitials/dogName מה-
+    // onboarding) לנתיב voteEvents/. profile אמור תמיד להיות מלא כאן
+    // (המסך הראשי חסום ע"י מודל ה-onboarding כל עוד הוא null), אבל אם
+    // בכל זאת חסר — שולחים null במקום לזרוק שגיאה.
+    const voteMeta = {
+      voterId,
+      userInitials: profile ? profile.userInitials : null,
+      dogName: profile ? profile.dogName : null,
+    };
+    incrementVote(questionId, key, voteMeta).catch((err) =>
       console.warn("vote failed:", err)
     );
+
+    sendVoteToGoogleSheets({
+      questionNumber: questionId,
+      optionId: key,
+      userInitials: voteMeta.userInitials,
+      dogName: voteMeta.dogName,
+      voterId,
+      ts: Date.now(),
+    });
   };
 
   // מסך שיוצג בפועל, לפי isQuestionSlide + status + האם המכשיר כבר ענה
@@ -291,6 +378,12 @@ export default function Vote({ devMode = true }) {
         }
       `}</style>
 
+      {profile && (
+        <div style={styles.greetingBar}>
+          שלום {profile.userInitials}, הבעלים של {profile.dogName}
+        </div>
+      )}
+
       <div className="gdv-vote-anim" key={screenKey} style={styles.animWrap}>
         {screen === "waiting" && <WaitingState savedAnswersCount={savedAnswersCount} />}
         {screen === "active" && (
@@ -320,6 +413,79 @@ export default function Vote({ devMode = true }) {
           />
         </>
       )}
+
+      {/* מודל onboarding חובה — מוצג מעל כל מסך (overlay מלא), כל עוד
+          profile הוא null (אין userInitials+dogName שמורים). אין X,
+          אין לחיצה על הרקע לסגירה, ואין מקש Escape — הדרך היחידה
+          להיעלם היא שליחת הטופס בהצלחה (ראו handleOnboardingSubmit). */}
+      {!profile && <OnboardingModal onSubmit={handleOnboardingSubmit} />}
+    </div>
+  );
+}
+
+/**
+ * מודל onboarding חובה בפעם הראשונה — חוסם את כל המסך (overlay מלא,
+ * z-index גבוה, בלי אפשרות סגירה) עד שהמשתמש ממלא שני שדות ושולח.
+ * הכפתור נשאר disabled כל עוד אחד השדות ריק (רווחים בלבד נחשבים ריק
+ * — ראו trim() למטה), כדי שלא ייווצרו רשומות עם ערכים ריקים.
+ */
+function OnboardingModal({ onSubmit }) {
+  const [initials, setInitials] = useState("");
+  const [dogName, setDogName] = useState("");
+  const canSubmit = initials.trim().length > 0 && dogName.trim().length > 0;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    onSubmit(initials.trim(), dogName.trim());
+  };
+
+  return (
+    <div style={styles.onboardingOverlay}>
+      <form style={styles.onboardingCard} onSubmit={handleSubmit}>
+        <h2 style={styles.onboardingTitle}>ברוכים הבאים! בואו נכיר...</h2>
+
+        <div style={styles.onboardingField}>
+          <label style={styles.onboardingLabel} htmlFor="onboarding-initials">
+            ראשי תיבות של שם פרטי ומשפחה
+          </label>
+          <input
+            id="onboarding-initials"
+            type="text"
+            value={initials}
+            onChange={(e) => setInitials(e.target.value)}
+            placeholder="א.י"
+            style={styles.onboardingInput}
+            autoComplete="off"
+          />
+        </div>
+
+        <div style={styles.onboardingField}>
+          <label style={styles.onboardingLabel} htmlFor="onboarding-dog-name">
+            אני הבעלים של...
+          </label>
+          <input
+            id="onboarding-dog-name"
+            type="text"
+            value={dogName}
+            onChange={(e) => setDogName(e.target.value)}
+            placeholder="שם הכלב..."
+            style={styles.onboardingInput}
+            autoComplete="off"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          style={{
+            ...styles.onboardingSubmit,
+            ...(canSubmit ? {} : styles.onboardingSubmitDisabled),
+          }}
+        >
+          להתחלת השאלון
+        </button>
+      </form>
     </div>
   );
 }
@@ -659,6 +825,18 @@ const styles = {
     margin: 0,
     position: "relative",
   },
+  // פס ברכה קבוע ("שלום X, הבעלים של Y") — מוצג בכל מסך (waiting/
+  // active/locked/revealed כאחד) ברגע שיש profile שמור, לא רק במסך
+  // אחד ספציפי. flexShrink: 0 כדי שלא ייגזל ממנו שטח בטעות בתוך
+  // ה-flex column של screen.
+  greetingBar: {
+    flexShrink: 0,
+    textAlign: "center",
+    fontSize: 13,
+    fontWeight: 500,
+    color: COLORS.textSecondary,
+    paddingBottom: 10,
+  },
   centerWrap: {
     flex: 1,
     width: "100%",
@@ -908,5 +1086,80 @@ const styles = {
     borderColor: "#d4b055",
     color: "#070804",
     fontWeight: 700,
+  },
+  // --- מודל onboarding חובה ---
+  // z-index גבוה משמעותית מ-devBar (9999), כדי שהמודל תמיד יהיה מעל
+  // הכל, כולל סרגל הבדיקה. position: fixed + inset: 0 מכסה את כל
+  // המסך בלי תלות בגלילה/גובה תוכן.
+  onboardingOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 20000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: "rgba(7, 8, 4, 0.94)",
+    boxSizing: "border-box",
+  },
+  onboardingCard: {
+    width: "100%",
+    maxWidth: 360,
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+    backgroundColor: "#141510",
+    border: "2px solid #2a2c22",
+    borderRadius: 18,
+    padding: "30px 22px",
+    boxSizing: "border-box",
+    boxShadow: "0 12px 40px rgba(0, 0, 0, 0.5)",
+  },
+  onboardingTitle: {
+    margin: "0 0 4px",
+    fontSize: 21,
+    fontWeight: 700,
+    color: COLORS.textPrimary,
+    textAlign: "center",
+  },
+  onboardingField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  onboardingLabel: {
+    fontSize: 13,
+    fontWeight: 500,
+    color: COLORS.textSecondary,
+  },
+  // fontSize: 16 (לא פחות) על ה-input -> מונע זום אוטומטי ב-iOS Safari
+  // בפוקוס על שדה טקסט (התנהגות ידועה: iOS מגדיל זום אם font-size של
+  // input קטן מ-16px).
+  onboardingInput: {
+    width: "100%",
+    padding: "13px 14px",
+    fontSize: 16,
+    fontFamily: "inherit",
+    color: COLORS.textPrimary,
+    backgroundColor: "#0d0f09",
+    border: "2px solid #2a2c22",
+    borderRadius: 10,
+    boxSizing: "border-box",
+    textAlign: "right",
+  },
+  onboardingSubmit: {
+    marginTop: 4,
+    padding: "14px 16px",
+    fontSize: 16,
+    fontWeight: 700,
+    color: COLORS.bg,
+    backgroundColor: COLORS.accent,
+    border: "none",
+    borderRadius: 10,
+    cursor: "pointer",
+  },
+  onboardingSubmitDisabled: {
+    opacity: 0.4,
+    cursor: "not-allowed",
   },
 };

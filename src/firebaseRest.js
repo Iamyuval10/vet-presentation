@@ -84,11 +84,28 @@ export function subscribeToPath(path, onData, intervalMs = 1500) {
  * רגילה, אך תיאורטית עלול "לבלוע" הצבעה אחת אם שתי הצבעות מגיעות באותה
  * מילישנייה בדיוק. אם צריך חוסן מלא מול עומס גבוה מאוד, יש לעבור בעתיד
  * לחיבור Firebase אמיתי (SDK) עם runTransaction.
+ *
+ * meta (אופציונלי): { voterId, userInitials, dogName } — כשמסופק
+ * voterId, נכתבת בנוסף למונה המצרפי גם רשומת אירוע מלאה בנתיב
+ * voteEvents/{questionNumber}/{voterId}, הכוללת מי הצביע (ראשי תיבות +
+ * שם הכלב) ומה בחר. voterId כמפתח מבטיח שאותו מכשיר לא ייצור רשומות
+ * כפולות עבור אותה שאלה. המונה המצרפי ב-votes/ נשאר בלתי-תלוי ברשומה
+ * הזו — הוא מה שמזין את התצוגה החיה (אחוזים) במצגת הראשית.
  */
-export async function incrementVote(questionNumber, optionId) {
+export async function incrementVote(questionNumber, optionId, meta = {}) {
   const current = await getPath(`votes/${questionNumber}/${optionId}`);
   const next = (current || 0) + 1;
   await patchPath(`votes/${questionNumber}`, { [optionId]: next });
+
+  if (meta.voterId) {
+    await putPath(`voteEvents/${questionNumber}/${meta.voterId}`, {
+      optionId,
+      userInitials: meta.userInitials || null,
+      dogName: meta.dogName || null,
+      ts: Date.now(),
+    });
+  }
+
   return next;
 }
 
