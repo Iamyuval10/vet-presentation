@@ -331,41 +331,40 @@ export default function Vote({ devMode = true }) {
   // "צעד קדימה" חלקה גם כשהמעבר מגיע מ-polling ברקע.
   const screenKey = `${screen}-${questionId ?? "none"}`;
 
-  // תיקון "קפיצת" הגלילה הראשונית ב-iOS Safari (בעיקר בפתיחה מסריקת QR):
-  // position: fixed ו-100vh על הקונטיינר הראשי גורמים בפועל לבעיה
-  // הפוכה — ב-iOS, ה-viewport האמיתי מחושב-מחדש רק אחרי אירוע resize
-  // (מעבר טאב/סיבוב מכשיר), כך שבטעינה ראשונית עם position: fixed
-  // התוכן "קופא" במיקום גלילה שגוי עד לאירוע כזה. הפתרון כאן הוא לא
-  // לנעול בכלל (ראו styles.screen: min-height: 100% רגיל, בלי fixed
-  // ובלי height נוקשה), ובנוסף לאלץ בפועל אתחול-מחדש של הגלילה מיד עם
-  // ה-mount: קריאה סינכרונית ל-scrollTo (לפני הציור הראשון, דרך
-  // useLayoutEffect), וקריאה חוזרת אחרי 100ms — כי ב-iOS Safari חישוב
-  // ה-viewport הסופי לפעמים מתעדכן רק כמה עשרות מילישניות אחרי הטעינה
-  // הראשונית (במיוחד כש-URL bar עדיין באנימציית כיווץ).
+  // נעילת גלילה מוחלטת + תיקון "קפיצת" המיקום הראשוני ב-iOS Safari
+  // (בעיקר בפתיחה מסריקת QR): html/body נעולים לגמרי (overflow: hidden,
+  // height: 100vh — ראו html/body בבלוק ה-style למטה) כדי שהדף עצמו
+  // לעולם לא יגלול; היכולת לגלול נשמרת אך ורק בתוך הקונטיינר הפנימי
+  // (animWrap, ראו styles.animWrap: overflow-y: auto) — כך ששאלה עם
+  // הרבה תוכן עדיין נגישה בגלילה מקומית, בלי שהעמוד כולו "יזוז".
+  // מעבר לזה, שתי קריאות scrollTo נוספות מאלצות איפוס-מחדש של מיקום
+  // הגלילה: אחת סינכרונית לפני הציור הראשון (useLayoutEffect), ואחת
+  // מושהית ב-50ms — כי ב-iOS Safari חישוב ה-viewport הסופי לפעמים
+  // מתעדכן רק כמה עשרות מילישניות אחרי הטעינה הראשונית (במיוחד כש-URL
+  // bar עדיין באנימציית כיווץ אחרי סריקת QR).
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
     // קורא ל-offsetHeight מכריח reflow סינכרוני, שגורם לדפדפן לחשב
     // מחדש מיידית את פריסת העמוד לפי ה-viewport האמיתי הנוכחי, בלי
     // להמתין לאירוע resize חיצוני.
     void document.body.offsetHeight;
-    const timeoutId = setTimeout(() => window.scrollTo(0, 0), 100);
+    const timeoutId = setTimeout(() => window.scrollTo(0, 0), 50);
     return () => clearTimeout(timeoutId);
   }, []);
 
   return (
     <div style={styles.screen} dir="rtl">
       <style>{`
-        /* min-height: 100% (לא height/max-height נוקשה, ולא position:
-           fixed) -> ה-viewport מחושב באופן דינמי לפי הדפדפן, בלי לנעול
-           גובה מראש שעלול לא להתעדכן נכון ב-iOS בטעינה ראשונית.
-           background-color זהה לרקע המצגת (COLORS.bg) על שלוש הרמות —
-           כך שגם אם סרגלי הדפדפן הניידים זזים לרגע ומותירים רווח קטן
-           מתחת לתוכן, הוא צבוע כמו הרקע ולא נראה כ"פס לבן". */
+        /* html/body נעולים ב-overflow: hidden + height: 100vh -> הדף
+           עצמו לעולם לא גולל (אין rubber-band/קפיצה ב-iOS). היכולת
+           לגלול נשמרת רק בתוך הקונטיינר הפנימי (ראו styles.animWrap:
+           overflow-y: auto). background-color זהה לרקע המצגת
+           (COLORS.bg) כדי שלא יופיע רקע לבן בשום מצב. */
         html, body, #root {
           margin: 0;
           padding: 0;
-          min-height: 100%;
-          overflow-x: hidden;
+          height: 100vh;
+          overflow: hidden;
           background-color: ${COLORS.bg};
         }
         @keyframes gdvVoteFadeIn {
@@ -380,7 +379,7 @@ export default function Vote({ devMode = true }) {
 
       {profile && (
         <div style={styles.greetingBar}>
-          שלום {profile.userInitials}, הבעלים של {profile.dogName}
+          היי {profile.userInitials}, הבעלים של {profile.dogName}
         </div>
       )}
 
@@ -399,11 +398,10 @@ export default function Vote({ devMode = true }) {
 
       {devMode && (
         <>
-          {/* מרווח בזרימה הרגילה (לא fixed) ששומר מקום כדי שסרגל הבדיקה
-              (fixed בתחתית המסך) לא יכסה את סוף התוכן — screen זורם
-              באופן טבעי (min-height בלבד, לא locked), כך שהתוכן יכול
-              לגלוש מתחת לגובה המסך, וה-spacer הזה חייב להיות חלק
-              מהזרימה כדי שהגלילה תיקח אותו בחשבון. */}
+          {/* מרווח קבוע (56px, flexShrink: 0) ששומר מקום בתוך העמודה
+              הנעולה (screen: height 100vh) כדי שסרגל הבדיקה (fixed
+              בתחתית המסך האמיתי) לא יכסה את סוף animWrap — בלעדיו
+              הגלילה הפנימית של animWrap הייתה נעצרת ממש מתחת לסרגל. */}
           <div style={{ height: 56, flexShrink: 0 }} aria-hidden="true" />
           <DevControls
             status={devStatus}
@@ -429,15 +427,59 @@ export default function Vote({ devMode = true }) {
  * הכפתור נשאר disabled כל עוד אחד השדות ריק (רווחים בלבד נחשבים ריק
  * — ראו trim() למטה), כדי שלא ייווצרו רשומות עם ערכים ריקים.
  */
+// שדה ראשי-התיבות מוגבל ל-2 אותיות (שם פרטי + משפחה) — ה-state עצמו
+// מחזיק תמיד רק את האותיות "האמיתיות" (בלי נקודה/רווח), וה-formatting
+// מחושב ממנו לצורך התצוגה בלבד. כך אין תלות בפענוח מחרוזת מפורמטת
+// בחזרה (diffing) — מקור האמת היחיד הוא רשימת האותיות.
+const INITIALS_MAX_LETTERS = 2;
+
+// אות ראשונה -> "א. " (נקודה+רווח, מוכן להקלדת האות הבאה).
+// שתי אותיות (או יותר, ליתר ביטחון) -> "א.ב" בלי רווח בין הנקודה
+// לאות הבאה, לפי הדוגמה המדויקת בדרישה.
+function formatInitials(letters) {
+  if (letters.length === 0) return "";
+  if (letters.length === 1) return `${letters}. `;
+  return letters.split("").join(".");
+}
+
+// מסנן מתוך הערך הגולמי של ה-input רק את תווי הפורמט שאנחנו עצמנו
+// מוסיפים (נקודה ורווח) — כל שאר התווים (עברית/לועזית) הם "אותיות"
+// לכל דבר, וה-slice חותך לכל היותר 2 מהן.
+function extractInitialsLetters(raw) {
+  return raw
+    .split("")
+    .filter((ch) => ch !== "." && ch !== " ")
+    .slice(0, INITIALS_MAX_LETTERS)
+    .join("");
+}
+
 function OnboardingModal({ onSubmit }) {
-  const [initials, setInitials] = useState("");
+  // initialsLetters מחזיק רק אותיות גולמיות (למשל "אב"), לעולם לא את
+  // הנקודה/רווח המפורמטים — אלה מחושבים אך ורק לתצוגה (formatInitials).
+  const [initialsLetters, setInitialsLetters] = useState("");
   const [dogName, setDogName] = useState("");
-  const canSubmit = initials.trim().length > 0 && dogName.trim().length > 0;
+  const canSubmit = initialsLetters.length > 0 && dogName.trim().length > 0;
+
+  const handleInitialsChange = (e) => {
+    setInitialsLetters(extractInitialsLetters(e.target.value));
+  };
+
+  // מיירטים Backspace/Delete באופן מלא (preventDefault) ומטפלים בהם
+  // ידנית על רשימת האותיות הגולמית — כך שמחיקה תמיד מסירה אות שלמה
+  // אחת, ולא "נתקעת" על הנקודה/רווח שהוספנו אוטומטית (למשל: אחרי "א. ",
+  // Backspace יחיד מרוקן את השדה לגמרי, לא רק מוחק את הרווח). אם יש
+  // טווח מסומן (למשל בחירת-הכל), מוחקים הכל בבת אחת.
+  const handleInitialsKeyDown = (e) => {
+    if (e.key !== "Backspace" && e.key !== "Delete") return;
+    e.preventDefault();
+    const hasSelection = e.target.selectionStart !== e.target.selectionEnd;
+    setInitialsLetters((prev) => (hasSelection ? "" : prev.slice(0, -1)));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!canSubmit) return;
-    onSubmit(initials.trim(), dogName.trim());
+    onSubmit(formatInitials(initialsLetters).trim(), dogName.trim());
   };
 
   return (
@@ -452,8 +494,10 @@ function OnboardingModal({ onSubmit }) {
           <input
             id="onboarding-initials"
             type="text"
-            value={initials}
-            onChange={(e) => setInitials(e.target.value)}
+            inputMode="text"
+            value={formatInitials(initialsLetters)}
+            onChange={handleInitialsChange}
+            onKeyDown={handleInitialsKeyDown}
             placeholder="א.י"
             style={styles.onboardingInput}
             autoComplete="off"
@@ -798,15 +842,15 @@ function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
 }
 
 const styles = {
-  // min-height: 100% (לא height/max-height נוקשה, ולא position: fixed)
-  // -> הקונטיינר תמיד תופס לפחות את גובה ה-viewport הזמין באמת (לפי
-  // % דינמי, לא vh מחושב-מראש), אבל לא "נועל" את הדף וגם לא מונע ממנו
-  // לגדול/להיגלל אם התוכן דורש יותר. position: fixed גרם בפועל להקפאת
-  // ה-viewport במיקום שגוי ב-iOS Safari בטעינה ראשונית (עד אירוע
-  // resize) — זו בדיוק הבעיה שהוחלפה כאן.
+  // height: 100vh + overflow: hidden -> הקונטיינר הראשי תופס בדיוק
+  // גובה מסך אחד ולעולם לא גולל בעצמו (בהתאמה ל-html/body הנעולים,
+  // ראו בלוק ה-style למעלה). הגלילה בפועל, אם צריך, קורית רק בתוך
+  // animWrap (overflow-y: auto) — כלומר הקונטיינר החיצוני נעול לחלוטין
+  // וזה אך ורק האזור הפנימי שיכול לזוז.
   screen: {
-    minHeight: "100%",
+    height: "100vh",
     width: "100%",
+    overflow: "hidden",
     backgroundColor: COLORS.bg,
     color: COLORS.textPrimary,
     fontFamily:
@@ -818,14 +862,20 @@ const styles = {
     margin: 0,
     position: "relative",
   },
+  // flex: 1 + overflow-y: auto -> זהו האזור היחיד שמורשה לגלול (ראו
+  // ההערה על screen למעלה) — כשתוכן שאלה ארוך מדי כדי להיכנס בשטח
+  // שנשאר מתחת לפס הברכה, הוא גולל מקומית בתוכו, בלי שהעמוד כולו זז.
   animWrap: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
     margin: 0,
     position: "relative",
   },
-  // פס ברכה קבוע ("שלום X, הבעלים של Y") — מוצג בכל מסך (waiting/
+  // פס ברכה קבוע ("היי X, הבעלים של Y") — מוצג בכל מסך (waiting/
   // active/locked/revealed כאחד) ברגע שיש profile שמור, לא רק במסך
   // אחד ספציפי. flexShrink: 0 כדי שלא ייגזל ממנו שטח בטעות בתוך
   // ה-flex column של screen.
