@@ -342,10 +342,21 @@ export default function Vote({ devMode = true }) {
   // משתנה). useLayoutEffect (ולא useEffect) רץ סינכרונית לפני הציור,
   // כדי שלא יהיה רגע נראה-לעין של offset שגוי.
   useLayoutEffect(() => {
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-  }, [screenKey]);
+    const resetScroll = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    resetScroll();
+    // ה-onboarding (מודל חובה בטעינה ראשונה) כולל שדות טקסט — פוקוס
+    // עליהם פותח את מקלדת המכשיר, וב-iOS Safari זה גורר גלילה אוטומטית
+    // של הדף כדי להציג את השדה מעל המקלדת. כשהמודל נסגר (profile
+    // מתמלא) המקלדת נסגרת, אבל אנימציית הסגירה שלה יכולה להזיז את
+    // הגלילה שוב כמה מאות מ"ש אחרי שה-effect כבר רץ — ולכן איפוס נוסף
+    // בעיכוב קצר, בנוסף לאיפוס המיידי.
+    const t = setTimeout(resetScroll, 350);
+    return () => clearTimeout(t);
+  }, [screenKey, !!profile]);
 
   return (
     <div className="app-container" style={styles.screen} dir="rtl">
@@ -370,7 +381,9 @@ export default function Vote({ devMode = true }) {
           background-color: ${COLORS.bg};
         }
         #root, .app-container {
-          min-height: 100dvh;
+          height: 100dvh;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
           display: flex;
           flex-direction: column;
           justify-content: flex-start;
@@ -854,26 +867,26 @@ function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
 }
 
 const styles = {
-  // height/maxHeight: 100dvh + overflow: hidden -> הקונטיינר הראשי
-  // (.app-container, ראו className על אלמנט השורש למטה, ובלוק ה-style
-  // למעלה) תופס בדיוק גובה מסך אחד ולעולם לא גולל בעצמו. justifyContent:
-  // "flex-start" + alignItems: "stretch" (ולא center/space-between)
-  // מבטיחים שהתוכן תמיד מתחיל מהפינה העליונה-ימנית ולא "צף" באמצע
-  // המסך. אין כאן שום negative margin/transform/position:fixed שעלולים
-  // להזיז את התוכן מעל לשוליים הנראים. הגלילה בפועל, אם צריך, קורית רק
-  // בתוך animWrap (overflow-y: auto) — כלומר הקונטיינר החיצוני נעול
-  // לחלוטין וזה אך ורק האזור הפנימי שיכול לזוז. הסגנון הזה (inline)
-  // חופף במתכוון לכללי ה-CSS class למעלה — inline תמיד גובר, אז שני
-  // המקורות חייבים להישאר מסונכרנים.
-  // min-height (לא height/maxHeight קשיח, ובלי overflow: hidden) ->
-  // הקונטיינר תמיד תופס לפחות מסך אחד, אבל גדל בזרימה טבעית אם התוכן
-  // דורש יותר — ואז html/body (שגם הם overflow-y: auto, ראו למעלה)
-  // גוללים כרגיל. justifyContent: "flex-start" + alignItems: "stretch"
-  // (לא center/space-between) מבטיחים שהתוכן תמיד מתחיל מהפינה
-  // העליונה-ימנית. אין כאן שום negative margin/transform שעלולים
-  // להזיז את התוכן מעל לשוליים הנראים.
+  // height: 100dvh + overflow-y: auto -> הקונטיינר הראשי (.app-container,
+  // ראו className על אלמנט השורש למטה, ובלוק ה-style למעלה) תופס בדיוק
+  // גובה מסך אחד. זה *לא* אותו דבר כמו הנעילה המסוכנת של html/body
+  // (overflow: hidden) שנמנעה בכוונה למעלה (ראו ההערה על useLayoutEffect
+  // של איפוס-גלילה) — .app-container הוא div רגיל, לא body עצמו, ולכן
+  // לא מפריע להתנהגות ה-URL bar הטבעית של הדפדפן ואינו יכול "לנעול"
+  // משתמש במצב גלול-חלקית. הגובה הקשיח כאן חשוב במיוחד כדי ש-useFitScale
+  // (ראו activeWrap/votedWrap למטה) יוכל בכלל למדוד "כמה שטח יש" ולכווץ
+  // תוכן שלא נכנס — בלי גובה קשיח כלשהו בשרשרת ה-flex, clientHeight תמיד
+  // שווה ל-scrollHeight וההתאמה האוטומטית לא עושה כלום. overflow-y: auto
+  // (לא hidden) הוא רשת ביטחון: אם התוכן עדיין ארוך מדי גם אחרי הכיווץ
+  // המקסימלי (MIN_FIT_SCALE), אפשר לגלול בתוך .app-container עצמו במקום
+  // שהתוכן ייחתך בשקט. justifyContent: "flex-start" + alignItems:
+  // "stretch" מבטיחים שהתוכן תמיד מתחיל מהפינה העליונה-ימנית. הסגנון
+  // הזה (inline) חופף במתכוון לכללי ה-CSS class למעלה — inline תמיד
+  // גובר, אז שני המקורות חייבים להישאר מסונכרנים.
   screen: {
-    minHeight: "100dvh",
+    height: "100dvh",
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
     width: "100%",
     backgroundColor: COLORS.bg,
     color: COLORS.textPrimary,
@@ -888,15 +901,17 @@ const styles = {
     margin: 0,
     position: "relative",
   },
-  // flex: 1 (בלי minHeight: 0/overflow-y: auto) -> כשהתוכן קצר (למשל
-  // מסך "ממתין"), האזור הזה עדיין נמתח למלא את שארית ה-min-height של
-  // screen (כדי ש-centerWrap יוכל למרכז אנכית); כשהתוכן ארוך, אין כאן
-  // שום overflow שחותך אותו — הוא פשוט דוחף את screen (ואת כל הדף)
-  // לגבוה יותר מ-100dvh, וה-html/body הגוללים למעלה מטפלים בזה.
+  // flex: 1 + minHeight: 0 -> כשהתוכן קצר (למשל מסך "ממתין"), האזור הזה
+  // נמתח למלא את שארית הגובה הקשיח של screen (כדי ש-centerWrap יוכל
+  // למרכז אנכית). ה-minHeight: 0 קריטי: בלעדיו, item בתוך flex column
+  // מקבל min-height: auto כברירת מחדל (= גובה התוכן שלו), מה שמבטל את
+  // אילוץ ה-flex:1 ומונע מ-activeWrap/votedWrap למטה לקבל גובה זמין
+  // אמיתי לצורך המדידה של useFitScale.
   animWrap: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
+    minHeight: 0,
     margin: 0,
     position: "relative",
   },
@@ -945,6 +960,10 @@ const styles = {
   // נכנס בגובה הזמין, הערך יורד וכל calc() התלוי בו מתכווץ יחד איתו.
   activeWrap: {
     width: "100%",
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
     display: "flex",
     flexDirection: "column",
     padding: "0 0 calc(0.5rem * var(--vote-scale, 1))",
@@ -1031,6 +1050,10 @@ const styles = {
   votedWrap: {
     display: "flex",
     flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
     padding: "0 0 calc(0.5rem * var(--vote-scale, 1))",
     boxSizing: "border-box",
     alignItems: "center",
