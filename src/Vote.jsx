@@ -353,24 +353,24 @@ export default function Vote({ devMode = true }) {
   return (
     <div className="app-container" style={styles.screen} dir="rtl">
       <style>{`
-        /* html/body: position: fixed + overflow: hidden -> נעילה
-           מוחלטת, לא רק "overflow: hidden" (שעדיין משאיר את הדף תיאורטית
-           גלילי במקרים מסוימים ב-iOS) אלא גם הוצאה מלאה מזרימת הגלילה
-           של הדפדפן, בדיוק כמו הטריק הסטנדרטי לנעילת גלילה מתחת ל-modal.
-           #root/.app-container ממלאים את כל השטח (100dvh) ומגדירים
-           overflow: hidden משלהם — היכולת לגלול נשמרת אך ורק בתוך
-           הקונטיינר הפנימי (ראו styles.animWrap: overflow-y: auto).
-           background-color זהה לרקע המצגת (COLORS.bg) כדי שלא יופיע
-           רקע לבן בשום מצב. */
+        /* html/body: overflow: hidden + height: 100dvh בלבד (בכוונה
+           בלי position: fixed/top/left) — position: fixed על html/body
+           התבררה כגורמת בפועל לתוכן להיפתח "קפוא" מעל השוליים העליונים
+           הנראים (מוצג כאילו הכותרת/השאלה נחתכות למעלה), כי אלמנט fixed
+           ממוקם ביחס ל-layout viewport שלא תמיד תואם את ה-visual
+           viewport האמיתי ב-iOS לפני שסרגל הכתובת מתייצב. overflow:
+           hidden + height: 100dvh מספיקים כדי שהדף עצמו לא יגלול —
+           #root/.app-container ממלאים את כל השטח ומיושרים למעלה
+           (justify-content: flex-start, לא center/space-between), כדי
+           שהכותרת והשאלה תמיד יתחילו בדיוק מהפינה העליונה. הגלילה
+           בפועל, אם צריך, קורית רק בתוך הקונטיינר הפנימי (ראו
+           styles.animWrap: overflow-y: auto). background-color זהה
+           לרקע המצגת (COLORS.bg) כדי שלא יופיע רקע לבן בשום מצב. */
         html, body {
           margin: 0;
           padding: 0;
-          height: 100%;
+          height: 100dvh;
           overflow: hidden;
-          position: fixed;
-          width: 100%;
-          top: 0;
-          left: 0;
           background-color: ${COLORS.bg};
         }
         #root, .app-container {
@@ -378,6 +378,8 @@ export default function Vote({ devMode = true }) {
           max-height: 100dvh;
           display: flex;
           flex-direction: column;
+          justify-content: flex-start;
+          align-items: stretch;
           overflow: hidden;
         }
         @keyframes gdvVoteFadeIn {
@@ -859,12 +861,15 @@ function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
 const styles = {
   // height/maxHeight: 100dvh + overflow: hidden -> הקונטיינר הראשי
   // (.app-container, ראו className על אלמנט השורש למטה, ובלוק ה-style
-  // למעלה) תופס בדיוק גובה מסך אחד ולעולם לא גולל בעצמו — בהתאמה ל-
-  // html/body הנעולים לגמרי (position: fixed). הגלילה בפועל, אם צריך,
-  // קורית רק בתוך animWrap (overflow-y: auto) — כלומר הקונטיינר
-  // החיצוני נעול לחלוטין וזה אך ורק האזור הפנימי שיכול לזוז. הסגנון
-  // הזה (inline) חופף במתכוון לכללי ה-CSS class למעלה — inline תמיד
-  // גובר, אז שני המקורות חייבים להישאר מסונכרנים.
+  // למעלה) תופס בדיוק גובה מסך אחד ולעולם לא גולל בעצמו. justifyContent:
+  // "flex-start" + alignItems: "stretch" (ולא center/space-between)
+  // מבטיחים שהתוכן תמיד מתחיל מהפינה העליונה-ימנית ולא "צף" באמצע
+  // המסך. אין כאן שום negative margin/transform/position:fixed שעלולים
+  // להזיז את התוכן מעל לשוליים הנראים. הגלילה בפועל, אם צריך, קורית רק
+  // בתוך animWrap (overflow-y: auto) — כלומר הקונטיינר החיצוני נעול
+  // לחלוטין וזה אך ורק האזור הפנימי שיכול לזוז. הסגנון הזה (inline)
+  // חופף במתכוון לכללי ה-CSS class למעלה — inline תמיד גובר, אז שני
+  // המקורות חייבים להישאר מסונכרנים.
   screen: {
     height: "100dvh",
     maxHeight: "100dvh",
@@ -876,19 +881,26 @@ const styles = {
       "'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     display: "flex",
     flexDirection: "column",
+    justifyContent: "flex-start",
+    alignItems: "stretch",
     boxSizing: "border-box",
-    padding: 12,
+    padding: "0.5rem",
     margin: 0,
     position: "relative",
   },
-  // flex: 1 + overflow-y: auto -> זהו האזור היחיד שמורשה לגלול (ראו
-  // ההערה על screen למעלה) — כשתוכן שאלה ארוך מדי כדי להיכנס בשטח
-  // שנשאר מתחת לפס הברכה, הוא גולל מקומית בתוכו, בלי שהעמוד כולו זז.
+  // flex: 1 + height: 100% + overflow-y: auto -> זהו הקונטיינר המיידי
+  // סביב השאלה/תשובות (האזור היחיד שמורשה לגלול, ראו ההערה על screen
+  // למעלה) — כשתוכן שאלה ארוך מדי כדי להיכנס בשטח שנשאר מתחת לפס
+  // הברכה, הוא גולל מקומית מ-(0,0) ועד הכרטיס האחרון, בלי שהעמוד כולו
+  // זז. height: "100%" נשאר "לא-פעיל" בפועל (flex: 1 עם flex-basis: 0%
+  // הוא זה שקובע בפועל את הגובה בציר column), אבל נשמר כאן במפורש כדי
+  // שהתלות בגובה הזמין תהיה חד-משמעית.
   animWrap: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
     minHeight: 0,
+    height: "100%",
     overflowY: "auto",
     WebkitOverflowScrolling: "touch",
     margin: 0,
@@ -901,10 +913,10 @@ const styles = {
   greetingBar: {
     flexShrink: 0,
     textAlign: "center",
-    fontSize: 13,
+    fontSize: "0.75rem",
     fontWeight: 500,
     color: COLORS.textSecondary,
-    paddingBottom: 10,
+    paddingBottom: "0.5rem",
   },
   centerWrap: {
     flex: 1,
@@ -941,16 +953,16 @@ const styles = {
     width: "100%",
     display: "flex",
     flexDirection: "column",
-    padding: "0 0 calc(12px * var(--vote-scale, 1))",
+    padding: "0 0 calc(0.5rem * var(--vote-scale, 1))",
     boxSizing: "border-box",
   },
   header: {
     textAlign: "center",
-    marginBottom: "calc(14px * var(--vote-scale, 1))",
+    marginBottom: "calc(0.625rem * var(--vote-scale, 1))",
     flexShrink: 0,
   },
   questionNumber: {
-    fontSize: "calc(20px * var(--vote-scale, 1))",
+    fontSize: "calc(clamp(0.95rem, 4vw, 1.15rem) * var(--vote-scale, 1))",
     fontWeight: 700,
     color: COLORS.accent,
     letterSpacing: 0.3,
@@ -958,33 +970,35 @@ const styles = {
   // justifyContent: flex-start -> הכרטיסים מתחילים מלמעלה ותופסים כל
   // אחד את הגובה הטבעי שהתוכן שלו דורש; אם התוכן ארוך מדי (למשל שאלה
   // עם טקסט ארוך על מסך קטן), useFitScale עדיין מכווץ קנה-מידה אחיד
-  // (--vote-scale) כדי לצמצם למינימום את הסיכוי לגלילה, אבל בלי
-  // overflow: hidden כאן — כדי שאם בכל זאת נדרשת גלילה (למשל מסך קטן
-  // וטקסט ארוך מהמינימום), הדף יגלול כרגיל במקום לחתוך תוכן.
+  // (--vote-scale) כדי לצמצם למינימום את הסיכוי לגלילה, ואם זה עדיין
+  // לא מספיק — animWrap (ראו למעלה) גולל פנימית במקום לחתוך תוכן.
+  // gap: 0.5rem (יחסי, לא px קבוע) -> מרווח מצומצם בין כרטיסי תשובה.
   optionsWrap: {
     width: "100%",
     display: "flex",
     flexDirection: "column",
-    gap: "calc(12px * var(--vote-scale, 1))",
+    gap: "calc(0.5rem * var(--vote-scale, 1))",
     justifyContent: "flex-start",
   },
   // ללא flex-grow (אין עוד flex: "1 1 0") — כל כרטיס תשובה מקבל בדיוק
   // את הגובה הטבעי שהתוכן שלו דורש (בקנה-המידה הנוכחי), ולא נמתח כדי
-  // "למלא" את השטח הפנוי, כדי שהטקסט לא ייראה מתוח/מנופח.
+  // "למלא" את השטח הפנוי, כדי שהטקסט לא ייראה מתוח/מנופח. padding:
+  // 0.75rem אחיד (יחסי) בכל הכיוונים, כדי לצמצם את הגובה הכולל של כל
+  // כרטיס ולתת יותר סיכוי ל-4 האפשרויות להיכנס במסך בלי גלילה.
   optionButton: {
     display: "flex",
     alignItems: "center",
-    gap: "calc(14px * var(--vote-scale, 1))",
+    gap: "calc(0.625rem * var(--vote-scale, 1))",
     width: "100%",
     flexShrink: 0,
-    padding: "calc(14px * var(--vote-scale, 1)) calc(16px * var(--vote-scale, 1))",
+    padding: "calc(0.75rem * var(--vote-scale, 1))",
     backgroundColor: "#141510",
     border: "2px solid #2a2c22",
     borderRadius: 16,
     color: COLORS.textPrimary,
-    fontSize: "calc(17px * var(--vote-scale, 1))",
+    fontSize: "calc(clamp(0.85rem, 3.4vw, 1rem) * var(--vote-scale, 1))",
     fontWeight: 500,
-    lineHeight: 1.4,
+    lineHeight: 1.35,
     textAlign: "right",
     cursor: "pointer",
     boxSizing: "border-box",
@@ -994,12 +1008,12 @@ const styles = {
   },
   optionBadge: {
     flexShrink: 0,
-    width: "calc(32px * var(--vote-scale, 1))",
-    height: "calc(32px * var(--vote-scale, 1))",
+    width: "calc(clamp(1.5rem, 7vw, 1.75rem) * var(--vote-scale, 1))",
+    height: "calc(clamp(1.5rem, 7vw, 1.75rem) * var(--vote-scale, 1))",
     borderRadius: "50%",
     backgroundColor: "#2a2c22",
     color: COLORS.textSecondary,
-    fontSize: "calc(15px * var(--vote-scale, 1))",
+    fontSize: "calc(clamp(0.7rem, 3.2vw, 0.85rem) * var(--vote-scale, 1))",
     fontWeight: 700,
     display: "flex",
     alignItems: "center",
@@ -1023,7 +1037,7 @@ const styles = {
   votedWrap: {
     display: "flex",
     flexDirection: "column",
-    padding: "0 0 calc(12px * var(--vote-scale, 1))",
+    padding: "0 0 calc(0.5rem * var(--vote-scale, 1))",
     boxSizing: "border-box",
     alignItems: "center",
     width: "100%",
@@ -1033,21 +1047,21 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginBottom: "calc(14px * var(--vote-scale, 1))",
+    marginBottom: "calc(0.625rem * var(--vote-scale, 1))",
     flexShrink: 0,
   },
   votedTitle: {
-    fontSize: "calc(17px * var(--vote-scale, 1))",
+    fontSize: "calc(clamp(0.8rem, 3.6vw, 1rem) * var(--vote-scale, 1))",
     fontWeight: 700,
     color: COLORS.textPrimary,
     margin: 0,
   },
   votedSubtitle: {
-    fontSize: "calc(15px * var(--vote-scale, 1))",
+    fontSize: "calc(clamp(0.7rem, 3.2vw, 0.85rem) * var(--vote-scale, 1))",
     fontWeight: 400,
     color: COLORS.textSecondary,
     margin: 0,
-    marginTop: "calc(16px * var(--vote-scale, 1))",
+    marginTop: "calc(0.75rem * var(--vote-scale, 1))",
     textAlign: "center",
     flexShrink: 0,
   },
