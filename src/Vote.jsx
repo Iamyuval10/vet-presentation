@@ -332,40 +332,53 @@ export default function Vote({ devMode = true }) {
   const screenKey = `${screen}-${questionId ?? "none"}`;
 
   // נעילת גלילה מוחלטת + תיקון "קפיצת" המיקום הראשוני ב-iOS Safari
-  // (בעיקר בפתיחה מסריקת QR): html/body נעולים לגמרי (overflow: hidden,
-  // height: 100vh — ראו html/body בבלוק ה-style למטה) כדי שהדף עצמו
-  // לעולם לא יגלול; היכולת לגלול נשמרת אך ורק בתוך הקונטיינר הפנימי
-  // (animWrap, ראו styles.animWrap: overflow-y: auto) — כך ששאלה עם
-  // הרבה תוכן עדיין נגישה בגלילה מקומית, בלי שהעמוד כולו "יזוז".
-  // מעבר לזה, שתי קריאות scrollTo נוספות מאלצות איפוס-מחדש של מיקום
-  // הגלילה: אחת סינכרונית לפני הציור הראשון (useLayoutEffect), ואחת
-  // מושהית ב-50ms — כי ב-iOS Safari חישוב ה-viewport הסופי לפעמים
-  // מתעדכן רק כמה עשרות מילישניות אחרי הטעינה הראשונית (במיוחד כש-URL
-  // bar עדיין באנימציית כיווץ אחרי סריקת QR).
-  useLayoutEffect(() => {
-    window.scrollTo(0, 0);
-    // קורא ל-offsetHeight מכריח reflow סינכרוני, שגורם לדפדפן לחשב
-    // מחדש מיידית את פריסת העמוד לפי ה-viewport האמיתי הנוכחי, בלי
-    // להמתין לאירוע resize חיצוני.
-    void document.body.offsetHeight;
-    const timeoutId = setTimeout(() => window.scrollTo(0, 0), 50);
-    return () => clearTimeout(timeoutId);
+  // (בעיקר בפתיחה מסריקת QR): html/body נעולים לגמרי (position: fixed,
+  // overflow: hidden — ראו html/body בבלוק ה-style למטה) כדי שהדף עצמו
+  // פיזית לא מסוגל להיגלל; היכולת לגלול נשמרת אך ורק בתוך הקונטיינר
+  // הפנימי (animWrap, ראו styles.animWrap: overflow-y: auto). מעבר
+  // לנעילה המבנית הזו, שתי קריאות איפוס-גלילה נוספות (מיידית + אחרי
+  // 100ms) מכסות את המקרה שבו סרגל הכתובת של הדפדפן/פוקוס אוטומטי
+  // עדיין "מזיז" את התצוגה רגע אחרי הטעינה הראשונית.
+  useEffect(() => {
+    const resetScroll = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    resetScroll();
+    const timer = setTimeout(resetScroll, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
-    <div style={styles.screen} dir="rtl">
+    <div className="app-container" style={styles.screen} dir="rtl">
       <style>{`
-        /* html/body נעולים ב-overflow: hidden + height: 100vh -> הדף
-           עצמו לעולם לא גולל (אין rubber-band/קפיצה ב-iOS). היכולת
-           לגלול נשמרת רק בתוך הקונטיינר הפנימי (ראו styles.animWrap:
-           overflow-y: auto). background-color זהה לרקע המצגת
-           (COLORS.bg) כדי שלא יופיע רקע לבן בשום מצב. */
-        html, body, #root {
+        /* html/body: position: fixed + overflow: hidden -> נעילה
+           מוחלטת, לא רק "overflow: hidden" (שעדיין משאיר את הדף תיאורטית
+           גלילי במקרים מסוימים ב-iOS) אלא גם הוצאה מלאה מזרימת הגלילה
+           של הדפדפן, בדיוק כמו הטריק הסטנדרטי לנעילת גלילה מתחת ל-modal.
+           #root/.app-container ממלאים את כל השטח (100dvh) ומגדירים
+           overflow: hidden משלהם — היכולת לגלול נשמרת אך ורק בתוך
+           הקונטיינר הפנימי (ראו styles.animWrap: overflow-y: auto).
+           background-color זהה לרקע המצגת (COLORS.bg) כדי שלא יופיע
+           רקע לבן בשום מצב. */
+        html, body {
           margin: 0;
           padding: 0;
-          height: 100vh;
+          height: 100%;
           overflow: hidden;
+          position: fixed;
+          width: 100%;
+          top: 0;
+          left: 0;
           background-color: ${COLORS.bg};
+        }
+        #root, .app-container {
+          height: 100dvh;
+          max-height: 100dvh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
         @keyframes gdvVoteFadeIn {
           from { opacity: 0; transform: translateY(8px); }
@@ -501,6 +514,7 @@ function OnboardingModal({ onSubmit }) {
             placeholder="א.י"
             style={styles.onboardingInput}
             autoComplete="off"
+            autoFocus={false}
           />
         </div>
 
@@ -516,6 +530,7 @@ function OnboardingModal({ onSubmit }) {
             placeholder="שם הכלב..."
             style={styles.onboardingInput}
             autoComplete="off"
+            autoFocus={false}
           />
         </div>
 
@@ -842,13 +857,17 @@ function DevControls({ status, onStatusChange, questionId, onQuestionChange }) {
 }
 
 const styles = {
-  // height: 100vh + overflow: hidden -> הקונטיינר הראשי תופס בדיוק
-  // גובה מסך אחד ולעולם לא גולל בעצמו (בהתאמה ל-html/body הנעולים,
-  // ראו בלוק ה-style למעלה). הגלילה בפועל, אם צריך, קורית רק בתוך
-  // animWrap (overflow-y: auto) — כלומר הקונטיינר החיצוני נעול לחלוטין
-  // וזה אך ורק האזור הפנימי שיכול לזוז.
+  // height/maxHeight: 100dvh + overflow: hidden -> הקונטיינר הראשי
+  // (.app-container, ראו className על אלמנט השורש למטה, ובלוק ה-style
+  // למעלה) תופס בדיוק גובה מסך אחד ולעולם לא גולל בעצמו — בהתאמה ל-
+  // html/body הנעולים לגמרי (position: fixed). הגלילה בפועל, אם צריך,
+  // קורית רק בתוך animWrap (overflow-y: auto) — כלומר הקונטיינר
+  // החיצוני נעול לחלוטין וזה אך ורק האזור הפנימי שיכול לזוז. הסגנון
+  // הזה (inline) חופף במתכוון לכללי ה-CSS class למעלה — inline תמיד
+  // גובר, אז שני המקורות חייבים להישאר מסונכרנים.
   screen: {
-    height: "100vh",
+    height: "100dvh",
+    maxHeight: "100dvh",
     width: "100%",
     overflow: "hidden",
     backgroundColor: COLORS.bg,
