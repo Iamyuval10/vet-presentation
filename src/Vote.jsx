@@ -61,7 +61,7 @@ const QUESTION_OPTIONS = Object.fromEntries(
       options[opt.id] = opt.text;
       if (opt.correct) correct = opt.id;
     });
-    return [number, { number, correct, options }];
+    return [number, { number, correct, options, scenario: q.scenario }];
   })
 );
 
@@ -644,14 +644,19 @@ function WaitingState({ savedAnswersCount }) {
 }
 
 /**
- * כותרת "שאלה N" — מוצגת בזהות (אותו מבנה/עיצוב) בראש כל מסך שקשור
- * לשאלה כלשהי (הצבעה פעילה / המתנה נעולה / חשיפת תשובה), כדי שהמספור
- * יישאר עקבי לחלוטין לאורך כל מסכי הטלפון ויתאם למספר המוצג במצגת.
+ * כותרת "שאלה N" + נוסח השאלה המלא (scenario) — מוצגת בזהות (אותו
+ * מבנה/עיצוב) בראש כל מסך שקשור לשאלה כלשהי (הצבעה פעילה / המתנה
+ * נעולה / חשיפת תשובה), כדי שהמספור והנוסח יישארו עקביים לחלוטין לאורך
+ * כל מסכי הטלפון ויתאמו בדיוק למה שמוצג במצגת (Presentation.jsx). זהו
+ * חלק מהקונטיינר הגלילי/מתכווץ (activeWrap/votedWrap, ראו useFitScale
+ * למעלה), כך שגם נוסח ארוך נכנס תמיד במסך — או ע"י כיווץ קנה-מידה
+ * אחיד, או ע"י גלילה כשהכיווץ המינימלי לא מספיק.
  */
-function QuestionHeader({ number }) {
+function QuestionHeader({ number, scenario }) {
   return (
     <div style={styles.header}>
       <span style={styles.questionNumber}>שאלה {number}</span>
+      {scenario && <p style={styles.scenarioText}>{scenario}</p>}
     </div>
   );
 }
@@ -660,7 +665,7 @@ function ActiveState({ question, onSelect }) {
   const { ref, scale } = useFitScale([question]);
   return (
     <div ref={ref} style={{ ...styles.activeWrap, "--vote-scale": scale }}>
-      <QuestionHeader number={question.number} />
+      <QuestionHeader number={question.number} scenario={question.scenario} />
 
       <div style={styles.optionsWrap}>
         {Object.keys(question.options).map((key) => (
@@ -687,7 +692,7 @@ function LockedWaitingState({ question, selected }) {
   const { ref, scale } = useFitScale([question, selected]);
   return (
     <div ref={ref} style={{ ...styles.votedWrap, "--vote-scale": scale }}>
-      <QuestionHeader number={question.number} />
+      <QuestionHeader number={question.number} scenario={question.scenario} />
 
       <div style={styles.votedHeader}>
         <Check size={18} strokeWidth={3} color={COLORS.accent} />
@@ -752,7 +757,7 @@ function RevealedState({ question, selected }) {
 
   return (
     <div ref={ref} style={{ ...styles.votedWrap, "--vote-scale": scale }}>
-      <QuestionHeader number={question.number} />
+      <QuestionHeader number={question.number} scenario={question.scenario} />
 
       <div style={styles.votedHeader}>
         {answered ? (
@@ -1001,6 +1006,16 @@ const styles = {
     fontWeight: 700,
     color: COLORS.accent,
     letterSpacing: 0.3,
+  },
+  // נוסח השאלה המלא (scenario), בדיוק כפי שמוצג במצגת — מוצג מיד מתחת
+  // למספר השאלה, לפני אפשרויות התשובה.
+  scenarioText: {
+    fontSize: "calc(clamp(0.78rem, 3.4vw, 0.95rem) * var(--vote-scale, 1))",
+    fontWeight: 500,
+    lineHeight: 1.5,
+    color: COLORS.textPrimary,
+    textAlign: "center",
+    margin: "calc(0.4rem * var(--vote-scale, 1)) 0 0",
   },
   // בכוונה בלי flex-grow על optionsWrap/optionButton: כל כרטיס מקבל
   // בדיוק את הגובה הטבעי (height: auto) שהתוכן שלו דורש בקנה-המידה
