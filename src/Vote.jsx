@@ -331,21 +331,16 @@ export default function Vote({ devMode = true }) {
   // "צעד קדימה" חלקה גם כשהמעבר מגיע מ-polling ברקע.
   const screenKey = `${screen}-${questionId ?? "none"}`;
 
-  // בלי שום נעילת overflow/position על html/body עצמם (ראו בלוק ה-style
-  // למטה) — נעילה כזו התבררה כמסוכנת יותר מהבעיה שהיא נועדה לפתור: אם
-  // הדפדפן כבר טען את הדף כשהוא גלול-חלקית (למשל בגלל פוקוס אוטומטי או
-  // אנימציית ה-URL bar ב-iOS Safari) ואז מיד "ננעל" ב-overflow: hidden,
-  // המשתמש נתקע במצב הגלול הזה בלי שום דרך לגלול בחזרה למעלה. הפתרון
-  // הנכון הוא ההפך: לאפשר גלילה רגילה של הדף (html/body: overflow-y:
-  // auto), ובמקביל לאלץ באופן אקטיבי איפוס-גלילה ל-(0,0) ב-useLayoutEffect
-  // — פעם אחת בעליית הרכיב, ופעם נוספת בכל מעבר מסך/שאלה (screenKey
-  // משתנה) ובכל סגירה של מודל ה-onboarding. useLayoutEffect (ולא
-  // useEffect) רץ סינכרונית לפני הציור, כדי שלא יהיה רגע נראה-לעין של
-  // offset שגוי. חשוב להבחין: #root/.app-container (styles.screen, ראו
-  // למטה) כן נעול בגובה 100dvh + overflow: hidden — אבל זה אלמנט div
-  // רגיל בתוך הדף, לא html/body עצמם, ולכן לא חשוף לאותה סכנה (לא
-  // מתערב בהתנהגות ה-URL bar של הדפדפן). הנעילה עליו היא זו שמאפשרת
-  // ל-useFitScale למטה להבטיח מבנית שהתוכן תמיד נכנס במסך אחד.
+  // html/body/#root כולם נעולים (position: fixed + overflow: hidden,
+  // ראו בלוק ה-<style> למטה) ולכן אינם יכולים לגלול בעצמם בכלל — אין
+  // "מצב גלול-חלקית" לאפס. איפוס הגלילה כאן הוא בעיקר רשת ביטחון
+  // (למשל אם דפדפן מסוים בכל זאת מזיז scrollTop פנימי כלשהו סביב
+  // אנימציית מקלדת/URL bar) ולא מנגנון קריטי כמו שהיה כשהדף עצמו יכול
+  // היה לגלול. useLayoutEffect (ולא useEffect) רץ סינכרונית לפני הציור.
+  // הקונטיינר הפנימי היחיד שכן גלילי בפועל הוא activeWrap/votedWrap
+  // (ראו styles.activeWrap למטה) — גלילה שם היא escape hatch מקומי
+  // למקרה קצה שבו useFitScale כיווץ עד המינימום וזה עדיין לא הספיק,
+  // ולא קשורה לאיפוס הזה.
   useLayoutEffect(() => {
     const resetScroll = () => {
       window.scrollTo(0, 0);
@@ -888,13 +883,14 @@ const styles = {
   // height: 100% + overflow: hidden -> הקונטיינר הראשי (.app-container)
   // תופס *בדיוק* גובה מסך אחד ולעולם לא גולל בעצמו. html/body/#root
   // מקובעים (position: fixed, ראו בלוק ה-<style> למעלה) לאותו גובה
-  // בדיוק, כך שאין אפילו תיאורטית לאן לגלול. הגובה הקשיח כאן הוא מה
-  // שמאפשר לכל שרשרת ה-flex מתחתיו (animWrap -> activeWrap/votedWrap ->
-  // optionsWrap -> optionButton, כל אחד עם flex: 1 + minHeight: 0)
-  // להתכווץ באמת. justifyContent: "flex-start" + alignItems: "stretch"
-  // מבטיחים שהתוכן תמיד מתחיל מהפינה העליונה-ימנית. הסגנון הזה (inline)
-  // חופף במתכוון לכללי ה-CSS class למעלה — inline תמיד גובר, אז שני
-  // המקורות חייבים להישאר מסונכרנים.
+  // בדיוק. שרשרת ה-flex מתחתיו (animWrap -> activeWrap/votedWrap) כן
+  // ממשיכה עם flex: 1 + minHeight: 0 ביחס להורה שלה, אבל activeWrap/
+  // votedWrap עצמם הם היחידים שהופכים בפועל לגלילים (overflow-y: auto)
+  // אם התוכן שלהם (כותרת + כרטיסים, בגודלם הטבעי) לא נכנס — ראו שם.
+  // justifyContent: "flex-start" + alignItems: "stretch" מבטיחים
+  // שהתוכן תמיד מתחיל מהפינה העליונה-ימנית. הסגנון הזה (inline) חופף
+  // במתכוון לכללי ה-CSS class למעלה — inline תמיד גובר, אז שני המקורות
+  // חייבים להישאר מסונכרנים.
   screen: {
     height: "100%",
     overflow: "hidden",
@@ -969,20 +965,36 @@ const styles = {
   // useFitScale למעלה) — ברירת המחדל היא תמיד 1 (גדלים "נוחים" רגילים,
   // בלי שום קנה-מידה מוקטן מראש); רק אם המדידה בפועל מגלה שהתוכן לא
   // נכנס בגובה הזמין, הערך יורד וכל calc() התלוי בו מתכווץ יחד איתו.
+  // flex: 1 + minHeight: 0 כאן הם ביחס להורה (animWrap) בלבד — הם לא
+  // אומרים שהתוכן *עצמו* (הכותרת + הכרטיסים) יכול להידחס אל מתחת לגודל
+  // הטבעי שלו: overflowY: "auto" (במקום overflow: "hidden") הוא רשת
+  // הביטחון בפועל — אם useFitScale כבר כיווץ עד MIN_FIT_SCALE וזה עדיין
+  // לא מספיק, האלמנט הזה עצמו נהיה גלילי במקום לחתוך תוכן בלי שום דרך
+  // להגיע אליו. maxHeight מבטיח שהאלמנט לעולם לא ידרוש יותר מגובה מסך
+  // אחד, גם אם ה-flex למעלה (בטעות) ייתן לו יותר.
   activeWrap: {
     width: "100%",
     flex: 1,
     minHeight: 0,
-    overflow: "hidden",
+    maxHeight: "100vh",
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
     display: "flex",
     flexDirection: "column",
     padding: "0 0 calc(0.5rem * var(--vote-scale, 1))",
     boxSizing: "border-box",
   },
+  // sticky + רקע זהה לדף: הכותרת (מספר השאלה) נשארת גלויה בראש
+  // activeWrap/votedWrap גם אם המשתמש גולל בפועל בתוך הקונטיינר הזה
+  // (מקרה קצה, כשגם הכיווץ האוטומטי לא הספיק).
   header: {
     textAlign: "center",
     marginBottom: "calc(0.625rem * var(--vote-scale, 1))",
     flexShrink: 0,
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
+    backgroundColor: COLORS.bg,
   },
   questionNumber: {
     fontSize: "calc(clamp(0.85rem, 3.6vw, 1.05rem) * var(--vote-scale, 1))",
@@ -990,21 +1002,15 @@ const styles = {
     color: COLORS.accent,
     letterSpacing: 0.3,
   },
-  // optionsWrap/optionButton מקבלים flex: 1 + minHeight: 0 (חלוקה שווה
-  // של כל הגובה הפנוי בין 4 הכרטיסים, בלי "שטח מת" בתחתית המסך) —
-  // בכוונה בלי overflow: hidden על אף אחד מהם: אם כרטיס בודד לא מכיל את
-  // כל תוכנו בגובה שהוקצה לו, הטקסט "גולש" חזותית (overflow: visible,
-  // ברירת המחדל) במקום להיחתך בשקט — וה-scrollHeight הטבעי הזה עדיין
-  // מגיע במלואו ל-activeWrap (ראו למעלה), שהוא המקום היחיד בשרשרת עם
-  // overflow: hidden בפועל. זה מה שמאפשר ל-useFitScale למדוד את הגלישה
-  // האמיתית ולהגיב לה בכיווץ --vote-scale (רץ ב-useLayoutEffect, לפני
-  // הציור הראשון) — במקום שהיא תיעלם בלי שהתוכן המלא ייראה בכלל.
+  // בכוונה בלי flex-grow על optionsWrap/optionButton: כל כרטיס מקבל
+  // בדיוק את הגובה הטבעי (height: auto) שהתוכן שלו דורש בקנה-המידה
+  // הנוכחי, בלי להימתח למלא שטח פנוי — flex-shrink: 0 מונע דחיסה מתחת
+  // לגודל הטבעי. אם הסכום עדיין לא נכנס בגובה הזמין, activeWrap (ראו
+  // למעלה) הוא זה שהופך לגלילי — לא הכרטיסים עצמם.
   optionsWrap: {
     width: "100%",
     display: "flex",
     flexDirection: "column",
-    flex: 1,
-    minHeight: 0,
     gap: "calc(0.4rem * var(--vote-scale, 1))",
   },
   optionButton: {
@@ -1012,9 +1018,8 @@ const styles = {
     alignItems: "center",
     gap: "calc(0.625rem * var(--vote-scale, 1))",
     width: "100%",
-    flex: 1,
-    flexShrink: 1,
-    minHeight: 0,
+    height: "auto",
+    flexShrink: 0,
     padding:
       "calc(0.4rem * var(--vote-scale, 1)) calc(0.75rem * var(--vote-scale, 1))",
     backgroundColor: "#141510",
@@ -1064,7 +1069,9 @@ const styles = {
     flexDirection: "column",
     flex: 1,
     minHeight: 0,
-    overflow: "hidden",
+    maxHeight: "100vh",
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
     padding: "0 0 calc(0.5rem * var(--vote-scale, 1))",
     boxSizing: "border-box",
     alignItems: "center",
