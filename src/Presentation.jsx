@@ -313,15 +313,81 @@ const OPTION_LETTERS = { a: `א'`, b: `ב'`, c: `ג'`, d: `ד'` };
 const ZERO_VOTES = { a: 0, b: 0, c: 0, d: 0 };
 
 /**
+ * מעקב אחר "קפיצות" של 5 מצביעים נוספים (5, 10, 15...) בסך ההצבעות
+ * הנוכחי (total), כדי להציג פופ-אפ "+5" בלוח בכל פעם שחוצים סף כזה —
+ * בלי לחשוף את המספר המדויק עצמו בשום מקום קבוע על המסך. prevTotalRef
+ * מאותחל לערך ההתחלתי (mount) ולא מייצר פופ-אפ באתחול עצמו — רק עליות
+ * אמיתיות שקורות בזמן שהשקופית מוצגת מפעילות אותו. מכיוון שהרכיב
+ * (QuizVoteSlide) נטען-מחדש בכל מעבר שקופית (key={current} בהורה),
+ * חזרה לאחור לשקופית הזו אחרי שכבר נצברו הצבעות לא תגרום לפופ-אפ שווא.
+ */
+const MILESTONE_STEP = 5;
+const MILESTONE_POPUP_DURATION_MS = 1800;
+
+function useVoteMilestonePulse(total, step = MILESTONE_STEP) {
+  const prevTotalRef = useRef(total);
+  const [pulse, setPulse] = useState(null);
+  const clearTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    const prevTotal = prevTotalRef.current;
+    if (total > prevTotal) {
+      const prevMilestone = Math.floor(prevTotal / step);
+      const newMilestone = Math.floor(total / step);
+      if (newMilestone > prevMilestone) {
+        setPulse(`${total}-${Date.now()}`);
+      }
+    }
+    prevTotalRef.current = total;
+  }, [total, step]);
+
+  useEffect(() => {
+    if (!pulse) return undefined;
+    clearTimeoutRef.current = setTimeout(() => setPulse(null), MILESTONE_POPUP_DURATION_MS);
+    return () => clearTimeout(clearTimeoutRef.current);
+  }, [pulse]);
+
+  return pulse;
+}
+
+/**
+ * סרגל "פעילות הצבעה" מופשט — ללא אחוזים וללא מספרים כלשהם. השטח
+ * הממולא מגיב באופן עמום ומוגבל-תקרה למספר ההצבעות שהצטברו (SOFT_CAP
+ * מבטיח שהוא לעולם לא "יסגר" ל-100%, כי גודל הקהל בפועל משתנה ונושק
+ * ל-35 ואין לו יעד קבוע), והפס הזוהר הנע (shimmer) רץ ברצף קבוע כדי
+ * לשדר שההצבעה חיה ופעילה גם כשאין הצבעה חדשה באותו רגע.
+ */
+const ACTIVITY_SOFT_CAP_PCT = 82;
+const ACTIVITY_BASE_PCT = 14;
+const ACTIVITY_PCT_PER_VOTE = 2.4;
+
+function VoteActivityBar({ total }) {
+  const fillPct = Math.min(ACTIVITY_SOFT_CAP_PCT, ACTIVITY_BASE_PCT + total * ACTIVITY_PCT_PER_VOTE);
+
+  return (
+    <div className="gdv-quiz-activity" aria-hidden="true">
+      <span className="gdv-quiz-activity-label">ההצבעה פעילה...</span>
+      <div className="gdv-quiz-activity-track">
+        <div className="gdv-quiz-activity-fill" style={{ width: `${fillPct}%` }} />
+        <div className="gdv-quiz-activity-shimmer" />
+      </div>
+    </div>
+  );
+}
+
+/**
  * מסך 1 — תצוגת הצבעה בלבד (read-only). המצגת הראשית אינה נקודת הצבעה —
- * הקולות מגיעים אך ורק מהטלפונים (Vote.jsx). כאן רק מוצגת התפלגות חיה
- * של הקולות שכבר נקלטו ב-Firebase, ללא כל אפשרות אינטראקציה/לחיצה.
+ * הקולות מגיעים אך ורק מהטלפונים (Vote.jsx). כאן מוצגת רק אינדיקציה
+ * כללית לכך שההצבעה חיה ופעילה, ללא חשיפת פירוט כלשהו (לא אחוזים
+ * לכל אפשרות ולא מספר מצביעים מדויק) כל עוד ההצבעה עדיין פתוחה —
+ * השמירה על סודיות התוצאות עד לחשיפה (QuizResultSlide) היא מכוונת.
  * ה-state של הקולות מוחזק בהורה (לפי quizId) כדי שיישמר גם בניווט אחורה/קדימה.
  */
 function QuizVoteSlide({ slide, votes, questionNumber }) {
   // total מחושב לפי האפשרויות שקיימות בפועל בשאלה הזו (ולא לפי 4 קבוע),
   // כדי שגם שאלה עם פחות מ-4 אפשרויות (למשל dilemma עם 3) תספור נכון.
   const total = slide.options.reduce((sum, opt) => sum + (votes[opt.id] || 0), 0);
+  const milestonePulse = useVoteMilestonePulse(total);
 
   return (
     <div className="gdv-quiz">
@@ -331,25 +397,23 @@ function QuizVoteSlide({ slide, votes, questionNumber }) {
       <p className="gdv-quiz-scenario">{slide.scenario}</p>
 
       <div className="gdv-quiz-options">
-        {slide.options.map((opt) => {
-          const count = votes[opt.id];
-          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-          return (
-            <div key={opt.id} className="gdv-quiz-option" aria-readonly="true">
-              <span className="gdv-quiz-option-top">
-                <span className="gdv-quiz-option-letter">{OPTION_LETTERS[opt.id]}</span>
-                <span className="gdv-quiz-option-text">{opt.text}</span>
-                <span className="gdv-quiz-option-pct">{pct}%</span>
-              </span>
-              <span className="gdv-quiz-bar-track">
-                <span className="gdv-quiz-bar-fill" style={{ width: `${pct}%` }} />
-              </span>
-            </div>
-          );
-        })}
+        {slide.options.map((opt) => (
+          <div key={opt.id} className="gdv-quiz-option" aria-readonly="true">
+            <span className="gdv-quiz-option-top">
+              <span className="gdv-quiz-option-letter">{OPTION_LETTERS[opt.id]}</span>
+              <span className="gdv-quiz-option-text">{opt.text}</span>
+            </span>
+          </div>
+        ))}
       </div>
 
-      <div className="gdv-quiz-voters">סה״כ מצביעים: {total}</div>
+      <VoteActivityBar total={total} />
+
+      {milestonePulse && (
+        <div key={milestonePulse} className="gdv-quiz-milestone-pop">
+          +{MILESTONE_STEP}
+        </div>
+      )}
     </div>
   );
 }
@@ -1184,6 +1248,7 @@ export default function Presentation() {
         /* --- שקופיות שאלת סימולציה --- */
         .gdv-quiz {
           width: 100%;
+          position: relative;
           background: linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-panel-raised) 100%);
           border: 1.5px solid var(--olive-deep);
           border-radius: 10px;
@@ -1260,34 +1325,88 @@ export default function Presentation() {
           line-height: 1.45;
           color: var(--text-primary);
         }
-        .gdv-quiz-option-pct {
-          flex-shrink: 0;
-          min-width: 52px;
-          text-align: left;
-          font-family: 'Rubik', sans-serif;
-          font-weight: 700;
-          font-size: 18px;
-          color: var(--gold);
+
+        /* --- סרגל "פעילות הצבעה" מופשט: בלי אחוזים, בלי ספירה מדויקת,
+           רק אינדיקציה כללית שההצבעה חיה ומתקדמת (ראו VoteActivityBar) --- */
+        .gdv-quiz-activity {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
         }
-        .gdv-quiz-bar-track {
-          display: block;
+        .gdv-quiz-activity-label {
+          font-size: 15px;
+          font-weight: 500;
+          letter-spacing: 0.04em;
+          color: var(--text-muted);
+        }
+        .gdv-quiz-activity-track {
+          position: relative;
           width: 100%;
+          max-width: 520px;
           height: 8px;
           border-radius: 4px;
           background: var(--olive-deep);
           overflow: hidden;
         }
-        .gdv-quiz-bar-fill {
+        .gdv-quiz-activity-fill {
           display: block;
           height: 100%;
           background: linear-gradient(90deg, var(--olive-light), var(--gold));
-          transition: width 0.35s ease;
+          transition: width 0.6s ease;
         }
-        .gdv-quiz-voters {
-          text-align: center;
-          font-size: 16px;
-          letter-spacing: 0.04em;
-          color: var(--text-muted);
+        .gdv-quiz-activity-shimmer {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.35) 50%,
+            transparent 100%
+          );
+          width: 40%;
+          animation: gdvActivityShimmer 1.8s linear infinite;
+        }
+        @keyframes gdvActivityShimmer {
+          from { transform: translateX(-120%); }
+          to { transform: translateX(280%); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .gdv-quiz-activity-shimmer { animation: none; }
+        }
+
+        /* --- פופ-אפ "+5" מצביעים נוספים (ראו useVoteMilestonePulse) --- */
+        .gdv-quiz-milestone-pop {
+          position: absolute;
+          top: 28px;
+          left: 32px;
+          z-index: 5;
+          font-family: 'Rubik', sans-serif;
+          font-weight: 800;
+          font-size: 26px;
+          color: var(--bg-void);
+          background: linear-gradient(135deg, var(--gold) 0%, var(--gold-soft) 100%);
+          border-radius: 999px;
+          padding: 10px 22px;
+          box-shadow: 0 8px 26px rgba(212,176,85,0.35);
+          pointer-events: none;
+          animation: gdvMilestonePop 1.8s ease forwards;
+        }
+        @keyframes gdvMilestonePop {
+          0% { opacity: 0; transform: translateY(8px) scale(0.85); }
+          14% { opacity: 1; transform: translateY(0) scale(1.08); }
+          26% { transform: translateY(0) scale(1); }
+          78% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-16px) scale(0.92); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .gdv-quiz-milestone-pop { animation: gdvMilestonePopReduced 1.8s ease forwards; }
+        }
+        @keyframes gdvMilestonePopReduced {
+          0% { opacity: 0; }
+          15% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
         }
 
         /* --- מסך תוצאה + הסבר --- */
