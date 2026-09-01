@@ -386,6 +386,8 @@ export default function Vote({ devMode = true }) {
           background-color: ${COLORS.bg};
         }
         #root, .app-container {
+          height: 100vh;
+          max-height: 100vh;
           height: 100dvh;
           max-height: 100dvh;
           overflow: hidden;
@@ -596,13 +598,26 @@ function useFitScale(deps) {
     }
 
     measure();
+    // מדידה חוזרת קצת אחרי ה-mount: בדפדפנים ניידים (בעיקר iOS Safari)
+    // סרגל הכתובת מתכווץ/מתרחב אחרי הטעינה הראשונית בלי לירות אירוע
+    // resize רגיל תמיד, כך שהמדידה הראשונה עלולה להתבסס על גובה זמין
+    // גדול-מדי-באופן-זמני ולפספס כיווץ שבאמת נדרש.
+    const settleTimeout = setTimeout(measure, 300);
 
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
     if (ro) ro.observe(el);
     window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    // visualViewport תופס שינויי גובה אמיתיים (סרגל כתובת/מקלדת) גם
+    // כשאין אירוע resize רגיל על window — המקור האמין ביותר לכך במובייל.
+    const vv = window.visualViewport;
+    if (vv) vv.addEventListener("resize", measure);
     return () => {
+      clearTimeout(settleTimeout);
       if (ro) ro.disconnect();
       window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+      if (vv) vv.removeEventListener("resize", measure);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -889,8 +904,12 @@ const styles = {
   // class למעלה — inline תמיד גובר, אז שני המקורות חייבים להישאר
   // מסונכרנים.
   screen: {
-    height: "100dvh",
-    maxHeight: "100dvh",
+    // גובה/maxHeight *לא* מוגדרים כאן inline בכוונה — הם מוגדרים רק
+    // ב-<style> שמעל (על .app-container), כי שם אפשר להצהיר גם 100vh
+    // וגם 100dvh באותו rule (ערך לא-נתמך פשוט מתעלמים ממנו ונשאר הערך
+    // התקף הקודם). ב-inline style של React יש רק key אחד בשם "height",
+    // כך שלא ניתן ליצור נפילה-חזרה (fallback) כזו כאן — מכשיר/דפדפן בלי
+    // תמיכה ב-dvh היה פשוט מקבל גובה לא-מוגדר כלל.
     overflow: "hidden",
     width: "100%",
     backgroundColor: COLORS.bg,
