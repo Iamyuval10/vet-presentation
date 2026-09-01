@@ -16,7 +16,8 @@ async function sendToSheets(payload) {
   } catch (err) {
     console.warn('שליחה ל-Sheets נכשלה:', err);
   }
-}
+}הי
+
 
 const shuffle = (arr) => {
   const a = [...arr];
@@ -623,5 +624,4 @@ export default function Quiz100({ questions: QUESTIONS, quizTitle = 'בוחן ה
       </div>
 
     </div>
-  );
-}
+  )

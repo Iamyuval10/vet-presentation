@@ -860,7 +860,7 @@ export default function Presentation() {
 
         .gdv-viewport {
           width: 100%;
-          height: 100vh;
+          height: 100vh !important;
           min-height: 480px;
           background: #000;
           display: flex;

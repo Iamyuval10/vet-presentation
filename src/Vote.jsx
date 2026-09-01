@@ -976,7 +976,7 @@ const styles = {
     width: "100%",
     flex: 1,
     minHeight: 0,
-    maxHeight: "100vh",
+    maxHeight: "100vh ",
     overflowY: "auto",
     WebkitOverflowScrolling: "touch",
     display: "flex",
